@@ -22,6 +22,7 @@ cp .env.example .env                   # Windows: copy .env.example .env
 minidot.bat                      # Windows: interactive CLI (agent "main")
 ./minidot.sh                     # Linux/VPS: same
 minidot.bat --prompt "summarise https://example.com"
+minidot.bat --prompt-file task.md      # read a multi-line prompt from a file
 ```
 Watch the tabs: set `MINIDOT_HEADLESS=false` in `.env` **before first launch** (the shared Chromium is headful once started).
 
@@ -29,6 +30,7 @@ Watch the tabs: set `MINIDOT_HEADLESS=false` in `.env` **before first launch** (
 | command | effect |
 |---|---|
 | `/new [name] [type]` | open a **new worker** (own CLI + space + worker type) |
+| `/paste` | paste a **multi-line prompt** (finish with a line containing only `.`) |
 | `/tools` | list built-in + custom tools, with descriptions and backend |
 | `/delete <name>` | delete a custom tool (and its file) |
 | `/skills` | list saved skills |

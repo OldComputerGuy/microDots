@@ -146,6 +146,7 @@ function spawnAgentTerminal(name, type) {
 function help() {
   console.log(dim('commands:'));
   console.log(dim('  /new [name] [type]   open a new MiniDot CLI (new worker + space)'));
+  console.log(dim('  /paste        paste a multi-line prompt (end with a line containing only ".")'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
@@ -160,8 +161,14 @@ function help() {
 async function main() {
   const argv = process.argv.slice(2);
   const pi = argv.indexOf('--prompt');
-  const once = argv.includes('--once') || pi >= 0;
-  const prompt = pi >= 0 ? argv.slice(pi + 1).join(' ') : argv.filter((a) => a !== '--once').join(' ').trim();
+  const pfi = argv.indexOf('--prompt-file');
+  const once = argv.includes('--once') || pi >= 0 || pfi >= 0;
+  const prompt =
+    pfi >= 0
+      ? readFileSync(argv[pfi + 1], 'utf8')
+      : pi >= 0
+        ? argv.slice(pi + 1).join(' ')
+        : argv.filter((a) => a !== '--once').join(' ').trim();
 
   const host = await createBrowserHost({ headless, isolate });
   await host.getPage(); // this agent's tab exists from the start
@@ -340,6 +347,18 @@ async function main() {
     if (line === '/exit' || line === '/quit') break;
     if (line === '/help') {
       help();
+      continue;
+    }
+    if (line === '/paste') {
+      console.log(dim('paste your prompt; finish with a line containing only "."'));
+      const buf = [];
+      for (;;) {
+        const l = await ask(dim('… '));
+        if (l.trim() === '.' || l.trim() === 'EOF') break;
+        buf.push(l);
+      }
+      const text = buf.join('\n').trim();
+      if (text) await turn(text);
       continue;
     }
     if (line === '/new' || line.startsWith('/new ')) {
