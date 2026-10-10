@@ -44,7 +44,7 @@ function commandExists(cmd) {
 }
 
 function useBwrap() {
-  return ['1', 'true'].includes(String(process.env.MINIDOT_SANDBOX_BWRAP ?? '').toLowerCase());
+  return ['1', 'true'].includes(String(process.env.MINIDOT_SANDBOX_BWRAP ?? '').toLowerCase()) && !bwrapFailed;
 }
 
 // bubblewrap args: whole system read-only, workspace writable, no shared pid/ipc/uts.
@@ -71,15 +71,15 @@ function workerCommand() {
     if (useBwrap()) {
       const workspace = hostToSandboxPath(resolve(process.cwd(), process.env.MINIDOT_SANDBOX_DIR ?? 'workspace'));
       const cwd = hostToSandboxPath(process.cwd());
-      return { cmd: 'wsl.exe', args: ['-d', distro(), '--exec', 'bwrap', ...bwrapArgs(workspace, cwd), '/usr/bin/node', workerWsl] };
+      return { cmd: 'wsl.exe', bwrap: true, args: ['-d', distro(), '--exec', 'bwrap', ...bwrapArgs(workspace, cwd), '/usr/bin/node', workerWsl] };
     }
-    return { cmd: 'wsl.exe', args: ['-d', distro(), '--exec', '/usr/bin/node', workerWsl] };
+    return { cmd: 'wsl.exe', bwrap: false, args: ['-d', distro(), '--exec', '/usr/bin/node', workerWsl] };
   }
   if (IS_LINUX && useBwrap() && commandExists('bwrap')) {
     const workspace = resolve(process.cwd(), process.env.MINIDOT_SANDBOX_DIR ?? 'workspace');
-    return { cmd: 'bwrap', args: [...bwrapArgs(workspace, process.cwd()), node, worker] };
+    return { cmd: 'bwrap', bwrap: true, args: [...bwrapArgs(workspace, process.cwd()), node, worker] };
   }
-  return { cmd: node, args: [worker] };
+  return { cmd: node, bwrap: false, args: [worker] };
 }
 
 let worker = null;
@@ -87,41 +87,63 @@ let ready = null;
 let readyResolve = null;
 let seq = 0;
 let hostHandler = null;
+let bwrapFailed = false;
 const runs = new Map(); // id -> { resolve, reject, log, timer }
 
 function ensureWorker() {
   if (worker) return ready;
-  const { cmd, args } = workerCommand();
-  worker = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   ready = new Promise((res) => {
     readyResolve = res;
   });
+  startWorker();
+  return ready;
+}
+
+function startWorker() {
+  const { cmd, args, bwrap } = workerCommand();
+  const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
+  worker = child;
+  let becameReady = false;
+  const onReady = () => {
+    becameReady = true;
+    readyResolve?.();
+  };
 
   let buf = '';
-  worker.stdout.on('data', (chunk) => {
+  child.stdout.on('data', (chunk) => {
     buf += chunk.toString('utf8');
     let nl;
     while ((nl = buf.indexOf('\n')) >= 0) {
       const line = buf.slice(0, nl);
       buf = buf.slice(nl + 1);
-      handleLine(line);
+      handleLine(line, onReady);
     }
   });
-  worker.stderr.on('data', (d) => process.stderr.write(`[sandbox] ${d.toString('utf8')}`));
-  worker.on('exit', () => {
-    worker = null;
-    ready = null;
-    readyResolve = null;
+  child.stderr.on('data', (d) => process.stderr.write(`[sandbox] ${d.toString('utf8')}`));
+  child.on('exit', () => {
+    const wasCurrent = worker === child;
+    if (wasCurrent) {
+      worker = null;
+    }
     for (const [id, r] of runs) {
       clearTimeout(r.timer);
       r.reject(new Error('sandbox worker exited'));
       runs.delete(id);
     }
+    // If bubblewrap couldn't start the worker, silently fall back to an
+    // unconfined worker so a missing/blocked `bwrap` never hard-breaks calls.
+    if (wasCurrent && bwrap && !becameReady && !bwrapFailed) {
+      bwrapFailed = true;
+      process.stderr.write(
+        '[sandbox] bubblewrap unavailable; falling back to the unconfined worker ' +
+          '(install it with `wsl -- sudo apt-get install -y bubblewrap`, or set MINIDOT_SANDBOX_BWRAP=false).\n',
+      );
+      startWorker(); // readyResolve still points at the original promise
+    }
   });
-  return ready;
 }
 
-function handleLine(line) {
+function handleLine(line, onReady) {
   const i = line.indexOf(SENTINEL);
   if (i < 0) {
     if (line.trim()) process.stdout.write(`${line}\n`);
@@ -134,7 +156,7 @@ function handleLine(line) {
     return;
   }
   if (msg.type === 'ready') {
-    readyResolve?.();
+    onReady?.();
     return;
   }
   if (msg.type === 'log') {

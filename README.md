@@ -73,7 +73,7 @@ Set `MINIDOT_TOOL_SANDBOX` to anything other than `none` to run self-authored to
 
 - **Windows:** the worker runs **inside WSL2** (spawned via `wsl.exe`). Requires Node in WSL: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
 - **Linux/VPS:** the worker runs **natively** — no WSL.
-- **Confinement (`MINIDOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` — the system is mounted **read-only** and only `./workspace` is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed (Windows/WSL: `wsl -- sudo apt-get install -y bubblewrap`; Linux: `apt install bubblewrap`). Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed.
+- **Confinement (`MINIDOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` — the system is mounted **read-only** and only `./workspace` is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed (Windows/WSL: `wsl -- sudo apt-get install -y bubblewrap`; Linux: `apt install bubblewrap`). Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed. If `bubblewrap` is missing, MiniDot logs a warning and **falls back to the unconfined worker** — best-effort confinement, never a hard failure.
 
 Either way:
 - `ctx.fs` is jailed to `./workspace` (or `MINIDOT_SANDBOX_DIR`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (the shared Chromium / OS viewer).
