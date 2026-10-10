@@ -68,6 +68,7 @@ export async function runAgent({
   maxSteps = 12,
   onToken,
   onTool,
+  confirm,
 }) {
   for (let step = 0; step < maxSteps; step++) {
     const { content, toolCalls } = await chatStep({
@@ -104,7 +105,7 @@ export async function runAgent({
       onTool?.('call', tc.name, args);
       let result;
       try {
-        result = await tools.execute(tc.name, args);
+        result = await tools.execute(tc.name, args, { confirm });
       } catch (e) {
         result = { error: String(e?.message ?? e) };
       }

@@ -1,4 +1,4 @@
-// Parallel web search for MiniDot (the same provider OpenDots uses).
+// Parallel web search + fetch for MiniDot (the same provider OpenDots uses).
 //
 // Talks to Parallel's anonymous Search MCP endpoint. No API key is required for
 // light use; set PARALLEL_API_KEY to use an authenticated (higher) tier.
@@ -9,7 +9,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 const ENDPOINT = 'https://search.parallel.ai/mcp';
 
 // Stable per-process id: Parallel uses it for free-tier rate limiting, so it
-// must stay the same across all searches in a session.
+// must stay the same across all calls in a session.
 const SESSION_ID = randomUUID();
 
 function normalise(result) {
@@ -36,52 +36,46 @@ function normalise(result) {
     }));
 }
 
-export async function parallelSearch({ query, objective, urls, limit = 5, timeoutMs = 60000 } = {}) {
-  const obj = String(objective ?? query ?? '').trim();
-  const urlList = Array.isArray(urls) ? urls.filter(Boolean) : [];
-  if (!obj && !urlList.length) throw new Error('web_search requires a query');
-
+async function callTool(name, args, timeoutMs) {
   const apiKey = (process.env.PARALLEL_API_KEY || '').trim() || undefined;
   const client = new Client({ name: 'minidot', version: '0.1.0' });
   const transport = new StreamableHTTPClientTransport(
     new URL(ENDPOINT),
     apiKey ? { requestInit: { headers: { Authorization: `Bearer ${apiKey}` } } } : undefined,
   );
-
   const signal = AbortSignal.timeout(timeoutMs);
-  const search_queries = [query || obj];
   try {
     await client.connect(transport);
-
-    let results = normalise(
-      await client.callTool(
-        { name: 'web_search', arguments: { objective: obj || 'Extract evidence from the supplied URLs.', search_queries, session_id: SESSION_ID } },
-        undefined,
-        { signal },
-      ),
-    );
-
-    if (urlList.length) {
-      const pages = normalise(
-        await client.callTool(
-          {
-            name: 'web_fetch',
-            arguments: {
-              urls: urlList.slice(0, 5),
-              objective: obj.length <= 200 ? obj : 'Extract source evidence relevant to the supplied research queries.',
-              search_queries,
-              session_id: SESSION_ID,
-            },
-          },
-          undefined,
-          { signal },
-        ),
-      );
-      if (pages.length) results = pages;
-    }
-
-    return results.slice(0, limit);
+    return normalise(await client.callTool({ name, arguments: args }, undefined, { signal }));
   } finally {
     await client.close().catch(() => {});
   }
+}
+
+export async function parallelSearch({ query, objective, limit = 5, timeoutMs = 60000 } = {}) {
+  const obj = String(objective ?? query ?? '').trim();
+  if (!obj) throw new Error('web_search requires a query');
+  const results = await callTool(
+    'web_search',
+    { objective: obj, search_queries: [query || obj], session_id: SESSION_ID },
+    timeoutMs,
+  );
+  return results.slice(0, limit);
+}
+
+export async function parallelFetch({ urls, objective, query, limit = 5, timeoutMs = 60000 } = {}) {
+  const urlList = (Array.isArray(urls) ? urls : [urls]).filter(Boolean).map(String);
+  if (!urlList.length) throw new Error('web_fetch requires at least one url');
+  const obj = String(objective ?? '').trim();
+  const results = await callTool(
+    'web_fetch',
+    {
+      urls: urlList.slice(0, 5),
+      objective: obj.length && obj.length <= 200 ? obj : 'Extract the main content of the supplied pages.',
+      search_queries: [query || obj || 'extract page content'],
+      session_id: SESSION_ID,
+    },
+    timeoutMs,
+  );
+  return results.slice(0, limit);
 }

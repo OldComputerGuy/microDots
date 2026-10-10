@@ -14,7 +14,8 @@ import {
   loadCustomTools,
 } from './custom-tools.mjs';
 import { runSandboxedTool, sandboxToHostPath } from './tool-sandbox.mjs';
-import { parallelSearch } from './parallel.mjs';
+import { parallelSearch, parallelFetch } from './parallel.mjs';
+import { listSkills, readSkill, saveSkill, deleteSkill } from './skills.mjs';
 
 export function openPath(file) {
   try {
@@ -65,6 +66,23 @@ const BUILTINS = [
           },
         },
         required: ['query'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'web_fetch',
+      description:
+        'Fetch specific public URLs (via Parallel) and return their extracted content. Use when you need exact wording, full-page analysis, or when search excerpts are not enough.',
+      parameters: {
+        type: 'object',
+        properties: {
+          urls: { type: 'array', items: { type: 'string' }, description: 'One or more public http(s) URLs to read' },
+          objective: { type: 'string', description: 'Optional; what you want to extract from the pages' },
+        },
+        required: ['urls'],
         additionalProperties: false,
       },
     },
@@ -193,6 +211,58 @@ const BUILTINS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'save_skill',
+      description:
+        'Save a reusable "skill" — a named markdown recipe/procedure you can follow later (not executable code; use create_tool for that). Stored in ./skills/<name>.md.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Short skill name (letters, digits, hyphen, underscore)' },
+          description: { type: 'string', description: 'One-line summary (shown in the skills list)' },
+          instructions: { type: 'string', description: 'The full markdown recipe/steps' },
+        },
+        required: ['name', 'description', 'instructions'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_skills',
+      description: 'List the reusable skills you have saved.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_skill',
+      description: 'Read the full text of a saved skill so you can follow it.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Skill name' } },
+        required: ['name'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_skill',
+      description: 'Delete a saved skill by name.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Skill name' } },
+        required: ['name'],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 const BUILTIN_NAMES = new Set(BUILTINS.map((t) => t.function.name));
@@ -251,11 +321,18 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
     }
   }
 
-  async function createTool(args) {
+  async function createTool(args, confirm) {
     const name = String(args?.name ?? '').trim();
     validateName(name, BUILTIN_NAMES);
     if (!args?.description) throw new Error('description is required');
     checkCode(args?.code);
+
+    // Optional human approval before a new tool is saved/registered.
+    if ((process.env.MINIDOT_APPROVE_CREATE_TOOL ?? 'true') !== 'false' && confirm) {
+      const ok = await confirm(`create tool "${name}"`, args.code);
+      if (!ok) return { declined: true, name, note: 'The user declined to create this tool.' };
+    }
+
     const parameters = args.parameters?.type
       ? args.parameters
       : { type: 'object', ...(args.parameters ?? {}) };
@@ -287,7 +364,7 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
     };
   }
 
-  async function execute(name, args) {
+  async function execute(name, args, { confirm } = {}) {
     const c = custom.get(name);
     if (c) {
       if (useSandbox && c.code) {
@@ -306,11 +383,27 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
 
     switch (name) {
       case 'web_search': {
-        const results = await parallelSearch({ query: args.query, objective: args.objective, urls: args.urls });
+        const results = await parallelSearch({ query: args.query, objective: args.objective });
         return { query: args.query, count: results.length, results };
       }
+      case 'web_fetch': {
+        const results = await parallelFetch({ urls: args.urls, objective: args.objective });
+        return { count: results.length, results };
+      }
+      case 'save_skill': {
+        const file = saveSkill({ name: args.name, description: args.description, instructions: args.instructions });
+        return { saved: args.name, file };
+      }
+      case 'list_skills':
+        return { skills: listSkills().map(({ name, description }) => ({ name, description })) };
+      case 'read_skill':
+        return { name: args.name, text: readSkill(String(args.name)) };
+      case 'delete_skill': {
+        const file = deleteSkill(String(args.name));
+        return { deleted: args.name, file };
+      }
       case 'create_tool':
-        return await createTool(args);
+        return await createTool(args, confirm);
       case 'list_tools': {
         return {
           builtin: BUILTINS.map((t) => ({ name: t.function.name, description: t.function.description })),

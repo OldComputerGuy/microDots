@@ -9,6 +9,7 @@ import { createTools, openPath, pruneScreenshots } from './tools.mjs';
 import { runAgent } from './agent.mjs';
 import { createMarkdownStream } from './markdown.mjs';
 import { stopSandboxWorker } from './tool-sandbox.mjs';
+import { listSkills } from './skills.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -28,13 +29,33 @@ const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
 const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
 
-const SYSTEM = `You are MiniDot, a small autonomous agent with your own browser tab in a shared Chromium. You have tools to fetch the web and to drive your tab. Be concise and factual.
-- Prefer http_get for plain pages; use the browser for pages that need JavaScript or interaction.
+const SYSTEM_BASE = `You are MiniDot, a small autonomous agent with your own browser tab in a shared Chromium. You have tools to fetch the web and to drive your tab. Be concise and factual.
+- Prefer web_search for current information; use http_get for plain pages; use the browser for pages that need JavaScript or interaction.
 - Always report what you actually observed. Never invent page content.
 - When your task is complete, answer the user directly in a short summary.`;
 
+const skillList = listSkills();
+const SKILLS_SECTION = skillList.length
+  ? `\n\nSaved skills (call read_skill to load one, then follow its steps):\n${skillList
+      .map((s) => `- ${s.name}: ${s.description}`)
+      .join('\n')}`
+  : '';
+const SYSTEM = SYSTEM_BASE + SKILLS_SECTION;
+
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const ask = (q) => new Promise((r) => rl.question(q, (a) => r(a)));
+
+// Approval for create_tool (skip with MINIDOT_APPROVE_CREATE_TOOL=false).
+async function confirmCreate(action, code) {
+  if (!process.stdin.isTTY) {
+    console.log(dim(`  (non-interactive) auto-approving ${action}`));
+    return true;
+  }
+  console.log(dim(`\n  new tool — ${action}:`));
+  for (const line of String(code ?? '').split('\n')) console.log(yellow(`  │ ${line}`));
+  const a = (await ask(dim('  create this tool? [y/N] '))).trim().toLowerCase();
+  return a === 'y' || a === 'yes';
+}
 
 function onTool(kind, name, data) {
   if (kind === 'call') console.log(dim(`  → ${name} ${Object.keys(data).length ? JSON.stringify(data) : ''}`));
@@ -71,9 +92,12 @@ function spawnAgentTerminal(name) {
 function help() {
   console.log(dim('commands:'));
   console.log(dim('  /new [name]   open a new MiniDot CLI (a new agent, own tab)'));
+  console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
+  console.log(dim('  /delete <n>   delete a custom tool'));
+  console.log(dim('  /skills       list saved skills'));
   console.log(dim('  /reset        reset this conversation'));
   console.log(dim('  /shots        open the latest screenshot'));
-  console.log(dim('  /tools /help /exit'));
+  console.log(dim('  /help /exit'));
 }
 
 async function main() {
@@ -102,6 +126,7 @@ async function main() {
         maxSteps,
         onToken: (t) => md.push(t),
         onTool,
+        confirm: confirmCreate,
       });
     } catch (e) {
       md.flush();
@@ -140,7 +165,31 @@ async function main() {
       continue;
     }
     if (line === '/tools') {
-      console.log(dim(tools.definitions.map((t) => t.function.name).join(', ')));
+      const { builtin, custom } = await tools.execute('list_tools', {});
+      console.log(dim('built-in:'));
+      for (const t of builtin) console.log(`  ${t.name}${dim(` — ${(t.description || '').slice(0, 96)}`)}`);
+      console.log(dim(`custom (${custom.length}):`));
+      for (const t of custom) console.log(`  ${t.name} ${dim(`[${t.backend}] — ${(t.description || '').slice(0, 88)}`)}`);
+      continue;
+    }
+    if (line === '/delete' || line.startsWith('/delete ')) {
+      const toolName = line.slice(7).trim();
+      if (!toolName) {
+        console.log(dim('usage: /delete <tool-name>'));
+        continue;
+      }
+      try {
+        const r = await tools.execute('delete_tool', { name: toolName });
+        console.log(dim(`deleted "${r.deleted}"`));
+      } catch (e) {
+        console.log(yellow(`  ${e?.message ?? e}`));
+      }
+      continue;
+    }
+    if (line === '/skills') {
+      const skills = listSkills();
+      if (!skills.length) console.log(dim('no skills yet'));
+      else for (const s of skills) console.log(`  ${s.name}${dim(` — ${s.description}`)}`);
       continue;
     }
     if (line === '/shots') {

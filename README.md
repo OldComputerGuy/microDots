@@ -29,16 +29,25 @@ Watch the tabs: set `MINIDOT_HEADLESS=false` in `.env` **before first launch** (
 | command | effect |
 |---|---|
 | `/new [name]` | open a **new CLI window** (new agent, own tab) |
+| `/tools` | list built-in + custom tools, with descriptions and backend |
+| `/delete <name>` | delete a custom tool (and its file) |
+| `/skills` | list saved skills |
 | `/reset` | reset this conversation |
 | `/shots` | open the latest screenshot |
-| `/tools`, `/help`, `/exit` | |
+| `/help`, `/exit` | |
 
 ## Web search
 MiniDot has a **`web_search`** tool backed by **Parallel** — the same provider OpenDots uses (`https://search.parallel.ai/mcp`). No API key is needed for light use; set `PARALLEL_API_KEY` for a higher authenticated tier.
 
-- `web_search(query, objective?, urls?)` → `{ query, count, results: [{ title, url, publish_date, excerpt }] }`.
-- Use it for current information, news, docs and comparisons — it beats opening a search engine in the browser (which gets blocked).
-- It's a **builtin**, so it runs on the host even in sandbox mode.
+- `web_search(query, objective?)` → `{ query, count, results: [{ title, url, publish_date, excerpt }] }` — for current information, news, docs, comparisons.
+- `web_fetch(urls, objective?)` → the extracted content of specific pages — when you need exact wording, quotes, or full-page analysis.
+- Both are **builtins**, so they run on the host even in sandbox mode. Prefer them over opening a search engine in the browser (which gets blocked).
+
+## Skills (recipes)
+MiniDot can save reusable **skills** — named markdown recipes/procedures (not code; that's `create_tool`). Stored in `./skills/<name>.md`.
+
+- `save_skill(name, description, instructions)`, `list_skills()`, `read_skill(name)`, `delete_skill(name)`.
+- At startup the available skills are listed in the system prompt, so MiniDot can `read_skill` one and follow it.
 
 ## Self-authored tools
 MiniDot can **write its own tools** and use them immediately.
@@ -63,13 +72,14 @@ export async function run(args, ctx) {
 Set `MINIDOT_TOOL_SANDBOX` to anything other than `none` to run self-authored tools in an isolated **Linux worker** instead of in-process. One worker script, two launchers:
 
 - **Windows:** the worker runs **inside WSL2** (spawned via `wsl.exe`). Requires Node in WSL: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
-- **Linux/VPS:** the worker runs **natively** — no WSL. With `MINIDOT_SANDBOX_BWRAP=true` and `bubblewrap` installed, it's wrapped so the system is read-only and only `./workspace` is writable.
+- **Linux/VPS:** the worker runs **natively** — no WSL.
+- **Confinement (`MINIDOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` — the system is mounted **read-only** and only `./workspace` is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed (Windows/WSL: `wsl -- sudo apt-get install -y bubblewrap`; Linux: `apt install bubblewrap`). Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed.
 
 Either way:
 - `ctx.fs` is jailed to `./workspace` (or `MINIDOT_SANDBOX_DIR`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (the shared Chromium / OS viewer).
 - Tools get `ctx.browser.{open,text,url,screenshot,click,type,close}` + `ctx.fs` instead of the in-process `page()`/`host`/`import()`.
 
-> ⚠️ Windows WSL mode is the **functional** version, not a hardened boundary yet (default user, interop, `/mnt/c` visible). On Linux it's easier to close those holes (non-root user + `bwrap`/namespaces); `MINIDOT_SANDBOX_BWRAP=true` gives a read-only root with only the workspace writable.
+> ⚠️ With `bwrap` on, the system is read-only and only the workspace is writable; without it, WSL mode is functional-but-loose (default user, interop, `/mnt/c`). Fully closing interop/reads needs a dedicated distro.
 
 ## Running on a Linux VPS (Hetzner)
 The core is portable — Node, Playwright, the model loop, Parallel search and your tools all move over unchanged. To prep a box:
@@ -96,6 +106,8 @@ The core is portable — Node, Playwright, the model loop, Parallel search and y
 | `MINIDOT_SHOT_FULLPAGE` | `false` | `true` = capture the whole page, not just the viewport |
 | `MINIDOT_SHOT_KEEP` | `10` | keep only the newest N screenshots; older ones are deleted |
 | `MINIDOT_TOOLS_DIR` | `tools-custom` | folder for self-authored tools |
+| `MINIDOT_SKILLS_DIR` | `skills` | folder for saved skills (recipes) |
+| `MINIDOT_APPROVE_CREATE_TOOL` | `true` | ask before saving a new tool (interactive) |
 | `PARALLEL_API_KEY` | — | optional; Parallel search key (anonymous free tier works without it) |
 | `MINIDOT_TOOL_SANDBOX` | `none` | anything else = run tools in the isolated Linux worker (WSL on Windows, native on Linux) |
 | `MINIDOT_SANDBOX_DIR` | `workspace` | folder tools may read/write in sandbox mode |

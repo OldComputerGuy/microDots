@@ -43,28 +43,41 @@ function commandExists(cmd) {
   }
 }
 
+function useBwrap() {
+  return ['1', 'true'].includes(String(process.env.MINIDOT_SANDBOX_BWRAP ?? '').toLowerCase());
+}
+
+// bubblewrap args: whole system read-only, workspace writable, no shared pid/ipc/uts.
+function bwrapArgs(workspace, cwd) {
+  return [
+    '--die-with-parent',
+    '--unshare-pid',
+    '--unshare-ipc',
+    '--unshare-uts',
+    '--ro-bind', '/', '/',
+    '--bind', workspace, workspace,
+    '--dev', '/dev',
+    '--proc', '/proc',
+    '--tmpfs', '/tmp',
+    '--chdir', cwd,
+  ];
+}
+
 function workerCommand() {
   const worker = workerPath();
-  if (IS_WIN) {
-    return { cmd: 'wsl.exe', args: ['-d', distro(), '--exec', '/usr/bin/node', hostToSandboxPath(worker)] };
-  }
   const node = process.env.MINIDOT_NODE || 'node';
-  const useBwrap = ['1', 'true'].includes(String(process.env.MINIDOT_SANDBOX_BWRAP ?? '').toLowerCase());
-  if (IS_LINUX && useBwrap && commandExists('bwrap')) {
+  if (IS_WIN) {
+    const workerWsl = hostToSandboxPath(worker);
+    if (useBwrap()) {
+      const workspace = hostToSandboxPath(resolve(process.cwd(), process.env.MINIDOT_SANDBOX_DIR ?? 'workspace'));
+      const cwd = hostToSandboxPath(process.cwd());
+      return { cmd: 'wsl.exe', args: ['-d', distro(), '--exec', 'bwrap', ...bwrapArgs(workspace, cwd), '/usr/bin/node', workerWsl] };
+    }
+    return { cmd: 'wsl.exe', args: ['-d', distro(), '--exec', '/usr/bin/node', workerWsl] };
+  }
+  if (IS_LINUX && useBwrap() && commandExists('bwrap')) {
     const workspace = resolve(process.cwd(), process.env.MINIDOT_SANDBOX_DIR ?? 'workspace');
-    return {
-      cmd: 'bwrap',
-      args: [
-        '--die-with-parent',
-        '--unshare-pid',
-        '--ro-bind', '/', '/',
-        '--bind', workspace, workspace,
-        '--chdir', process.cwd(),
-        '--dev', '/dev',
-        '--proc', '/proc',
-        '--', node, worker,
-      ],
-    };
+    return { cmd: 'bwrap', args: [...bwrapArgs(workspace, process.cwd()), node, worker] };
   }
   return { cmd: node, args: [worker] };
 }
