@@ -155,7 +155,9 @@ function help() {
   console.log(dim('  /reset        reset this conversation'));
   console.log(dim('  /shots        open the latest screenshot'));
   console.log(dim(`  /help /exit`));
-  if (allowSpawn) console.log(dim(`  (sub-agents: spawn_subagent is available; depth<=${maxDepth}, agents<=${maxAgents})`));
+  if (allowSpawn)
+    console.log(dim(`  (sub-agents: spawn_subagent available — depth<=${maxDepth}, agents<=${maxAgents}, concurrency<=${maxConcurrent})`));
+  else console.log(dim('  (sub-agents: disabled — set MINIDOT_ALLOW_SPAWN=true to enable)'));
 }
 
 async function main() {
