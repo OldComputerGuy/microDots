@@ -88,7 +88,7 @@ function splitIndex(messages, keepRecent) {
   return split;
 }
 
-async function summarizeChunk(chunk, prior, { model, apiKey, baseUrl, charsPerToken }) {
+async function summarizeChunk(chunk, prior, { model, fallbackModel, apiKey, baseUrl }) {
   const transcript = chunk
     .map((m) => {
       const c = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
@@ -101,21 +101,32 @@ async function summarizeChunk(chunk, prior, { model, apiKey, baseUrl, charsPerTo
   const sys =
     'You compress an ongoing agent conversation into a concise but COMPLETE summary. Preserve: the current goal, facts learned, decisions, source URLs, file paths, important tool results, and open questions. Be specific and factual; never invent. Output only the summary.';
   const user = (prior ? `Summary so far:\n${prior}\n\n` : '') + `New conversation to fold in:\n${body}`;
-  const res = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: sys },
-        { role: 'user', content: user },
-      ],
-      stream: false,
-    }),
-  });
-  if (!res.ok) throw new Error(`summarize HTTP ${res.status}`);
-  const j = await res.json();
-  return (j.choices?.[0]?.message?.content || '').trim() || prior || '';
+
+  let lastErr;
+  for (const candidate of [model, fallbackModel].filter(Boolean)) {
+    try {
+      const res = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: candidate,
+          messages: [
+            { role: 'system', content: sys },
+            { role: 'user', content: user },
+          ],
+          stream: false,
+        }),
+      });
+      if (!res.ok) throw new Error(`summarize HTTP ${res.status}`);
+      const j = await res.json();
+      const text = (j.choices?.[0]?.message?.content || '').trim();
+      if (text) return text;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  if (lastErr) throw lastErr;
+  return prior || '';
 }
 
 async function compactMessages(messages, compact, cfg) {
@@ -127,9 +138,9 @@ async function compactMessages(messages, compact, cfg) {
   if (!chunk.length) return false;
   const summary = await summarizeChunk(chunk, prior, {
     model: compact.summaryModel || cfg.model,
+    fallbackModel: compact.fallbackModel || cfg.model,
     apiKey: cfg.apiKey,
     baseUrl: cfg.baseUrl,
-    charsPerToken: compact.charsPerToken,
   });
   if (!summary) return false;
   messages.splice(1, split - 1, { role: 'system', content: `${SUMMARY_PREFIX}\n${summary}` });

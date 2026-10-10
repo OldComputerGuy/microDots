@@ -184,7 +184,7 @@ Applies to the root agent **and every sub-agent**. Each compaction costs one ext
 | `MINIDOT_CONTEXT_TOKENS` | `24000` | summarize when estimated context exceeds this |
 | `MINIDOT_KEEP_RECENT` | `6` | recent messages kept verbatim during compaction |
 | `MINIDOT_OFFLOAD_TOKENS` | `4000` | offload tool outputs larger than this to the space |
-| `MINIDOT_SUMMARY_MODEL` | *(MINIDOT_MODEL)* | model used for summaries |
+| `MINIDOT_SUMMARY_MODEL` | `qwen/qwen3.6-flash` | cheap model for summaries (falls back to `MINIDOT_MODEL`) |
 
 ## Notes
 - Assistant replies are rendered as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code blocks, links, rules).

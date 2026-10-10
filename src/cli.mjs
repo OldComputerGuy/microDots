@@ -32,7 +32,7 @@ const compactEnabled = (process.env.MINIDOT_COMPACT ?? 'false') === 'true';
 const contextTokens = Number(process.env.MINIDOT_CONTEXT_TOKENS ?? 24000);
 const keepRecent = Number(process.env.MINIDOT_KEEP_RECENT ?? 6);
 const offloadTokens = Number(process.env.MINIDOT_OFFLOAD_TOKENS ?? 4000);
-const summaryModel = process.env.MINIDOT_SUMMARY_MODEL || model;
+const summaryModel = process.env.MINIDOT_SUMMARY_MODEL || 'qwen/qwen3.6-flash';
 const agentName = process.env.MINIDOT_AGENT || 'main';
 
 if (!apiKey) {
@@ -118,6 +118,7 @@ function compactFor(space, depth) {
     charsPerToken,
     offloadTokens,
     summaryModel,
+    fallbackModel: model,
     spaceDir: space,
     headChars: 2000,
     onNote: (m) => console.log(dim(`${'  '.repeat(depth)}  · ${m}`)),
