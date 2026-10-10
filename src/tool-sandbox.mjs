@@ -6,6 +6,8 @@
 //   - Linux:   runs the same worker natively (optionally inside bubblewrap).
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
+import { mkdirSync } from 'node:fs';
+import { spaceDir } from './space.mjs';
 
 const SENTINEL = '@@MINIDOT@@';
 const IS_WIN = process.platform === 'win32';
@@ -69,14 +71,17 @@ function workerCommand() {
   if (IS_WIN) {
     const workerWsl = hostToSandboxPath(worker);
     if (useBwrap()) {
-      const workspace = hostToSandboxPath(resolve(process.cwd(), process.env.MINIDOT_SANDBOX_DIR ?? 'workspace'));
+      const space = spaceDir(process.env.MINIDOT_AGENT || 'main');
+      mkdirSync(space, { recursive: true });
+      const workspace = hostToSandboxPath(space);
       const cwd = hostToSandboxPath(process.cwd());
       return { cmd: 'wsl.exe', bwrap: true, args: ['-d', distro(), '--exec', 'bwrap', ...bwrapArgs(workspace, cwd), '/usr/bin/node', workerWsl] };
     }
     return { cmd: 'wsl.exe', bwrap: false, args: ['-d', distro(), '--exec', '/usr/bin/node', workerWsl] };
   }
   if (IS_LINUX && useBwrap() && commandExists('bwrap')) {
-    const workspace = resolve(process.cwd(), process.env.MINIDOT_SANDBOX_DIR ?? 'workspace');
+    const workspace = spaceDir(process.env.MINIDOT_AGENT || 'main');
+    mkdirSync(workspace, { recursive: true });
     return { cmd: 'bwrap', bwrap: true, args: [...bwrapArgs(workspace, process.cwd()), node, worker] };
   }
   return { cmd: node, bwrap: false, args: [worker] };
@@ -194,7 +199,7 @@ export async function runSandboxedTool({ code, args, root, agentId, bridge, log,
   await ensureWorker();
   hostHandler = bridge;
   const id = `r${++seq}`;
-  const rootSandbox = hostToSandboxPath(root ?? resolve(process.cwd(), 'workspace'));
+  const rootSandbox = hostToSandboxPath(root ?? spaceDir(process.env.MINIDOT_AGENT || 'main'));
   const tl = Number(timeoutMs ?? process.env.MINIDOT_WSL_TIMEOUT_MS ?? 60000);
 
   return await new Promise((resolve, reject) => {
