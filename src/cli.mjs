@@ -8,7 +8,7 @@ import { createBrowserHost } from './browser-host.mjs';
 import { createTools, openPath, pruneScreenshots } from './tools.mjs';
 import { runAgent } from './agent.mjs';
 import { createMarkdownStream } from './markdown.mjs';
-import { stopWslWorker } from './wsl-sandbox.mjs';
+import { stopSandboxWorker } from './tool-sandbox.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -45,11 +45,26 @@ function onTool(kind, name, data) {
 }
 
 function spawnAgentTerminal(name) {
-  const bat = resolve(process.cwd(), 'minidot.bat');
   const env = { ...process.env };
   env.MINIDOT_AGENT = name || `agent-${Date.now().toString(36)}`;
-  const comspec = process.env.ComSpec || 'cmd.exe';
-  execFile(comspec, ['/c', 'start', 'MiniDot', 'cmd', '/k', `"${bat}"`], { cwd: process.cwd(), env });
+  if (process.platform === 'win32') {
+    const bat = resolve(process.cwd(), 'minidot.bat');
+    const comspec = process.env.ComSpec || 'cmd.exe';
+    execFile(comspec, ['/c', 'start', 'MiniDot', 'cmd', '/k', `"${bat}"`], { cwd: process.cwd(), env });
+  } else {
+    // Linux/VPS: prefer a new tmux window if we're inside tmux, else a terminal
+    // emulator, else launch a detached background process (no window).
+    const sh = resolve(process.cwd(), 'minidot.sh');
+    const insideTmux = !!process.env.TMUX;
+    if (insideTmux) {
+      execFile('tmux', ['new-window', `-n`, env.MINIDOT_AGENT, `MINIDOT_AGENT=${env.MINIDOT_AGENT} ${sh}`], { cwd: process.cwd() });
+    } else if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) {
+      const term = process.env.MINIDOT_TERMINAL || 'x-terminal-emulator';
+      execFile(term, ['-e', `MINIDOT_AGENT=${env.MINIDOT_AGENT} ${sh}`], { cwd: process.cwd(), env });
+    } else {
+      execFile('setsid', ['-f', 'env', `MINIDOT_AGENT=${env.MINIDOT_AGENT}`, sh], { cwd: process.cwd(), env, detached: true });
+    }
+  }
   return env.MINIDOT_AGENT;
 }
 
@@ -103,7 +118,7 @@ async function main() {
     }
     await turn(prompt);
     await host.close();
-    stopWslWorker();
+    stopSandboxWorker();
     rl.close();
     return;
   }
@@ -151,7 +166,7 @@ async function main() {
     await turn(line);
   }
   await host.close();
-  stopWslWorker();
+  stopSandboxWorker();
   rl.close();
 }
 

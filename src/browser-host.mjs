@@ -43,6 +43,13 @@ async function ensureSharedChromium(headless) {
     '--disable-background-networking',
   ];
   if (headless) args.push('--headless=new');
+  // Linux VPS: Chromium refuses to sandbox as root; and allow extra args.
+  if (process.platform === 'linux' && typeof process.getuid === 'function' && process.getuid() === 0) {
+    args.push('--no-sandbox');
+  }
+  if (process.env.MINIDOT_CHROMIUM_ARGS) {
+    args.push(...process.env.MINIDOT_CHROMIUM_ARGS.split(/\s+/).filter(Boolean));
+  }
   args.push('about:blank');
   const child = spawn(exe, args, { detached: true, stdio: 'ignore' });
   child.unref();

@@ -12,14 +12,15 @@ No CopilotKit, no React, no server, no Docker.
 ## Setup
 ```sh
 npm install
-npx playwright install chromium
-copy .env.example .env
+npx playwright install chromium        # Linux/VPS: npx playwright install --with-deps chromium
+cp .env.example .env                   # Windows: copy .env.example .env
 # set OPENROUTER_API_KEY in .env, or rely on an OpenRouterKey env var
 ```
 
 ## Run
 ```sh
-minidot.bat                      # interactive CLI (agent "main")
+minidot.bat                      # Windows: interactive CLI (agent "main")
+./minidot.sh                     # Linux/VPS: same
 minidot.bat --prompt "summarise https://example.com"
 ```
 Watch the tabs: set `MINIDOT_HEADLESS=false` in `.env` **before first launch** (the shared Chromium is headful once started).
@@ -37,7 +38,7 @@ MiniDot has a **`web_search`** tool backed by **Parallel** — the same provider
 
 - `web_search(query, objective?, urls?)` → `{ query, count, results: [{ title, url, publish_date, excerpt }] }`.
 - Use it for current information, news, docs and comparisons — it beats opening a search engine in the browser (which gets blocked).
-- It's a **builtin**, so it runs on Windows even when `MINIDOT_TOOL_SANDBOX=wsl`.
+- It's a **builtin**, so it runs on the host even in sandbox mode.
 
 ## Self-authored tools
 MiniDot can **write its own tools** and use them immediately.
@@ -58,15 +59,26 @@ export async function run(args, ctx) {
 
 > ⚠️ Custom tool code runs **in the MiniDot Node process with your full local privileges** (filesystem, network, child processes) when the sandbox is off. Only let it create tools you trust; review `./tools-custom/*.mjs` and delete anything unwanted.
 
-### WSL2 sandbox backend (opt-in)
-Set `MINIDOT_TOOL_SANDBOX=wsl` to run self-authored tools **inside your WSL2 distro** instead of in-process:
+### Tool sandbox backend (opt-in)
+Set `MINIDOT_TOOL_SANDBOX` to anything other than `none` to run self-authored tools in an isolated **Linux worker** instead of in-process. One worker script, two launchers:
 
-- A persistent **worker inside WSL** executes each tool (one at a time) and talks to MiniDot over newline-delimited JSON.
-- `ctx.fs` is jailed to `./workspace` (or `MINIDOT_SANDBOX_DIR`); `ctx.fetch` runs natively inside WSL; `ctx.browser.*` and `ctx.openPath` are **bridged back to Windows** (the shared Chromium / OS viewer).
-- Requires **Node inside WSL**: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
-- Tools get the same API surface as in-process (`ctx.browser.{open,text,url,screenshot,click,type,close}` instead of `page()`), plus `ctx.fs`.
+- **Windows:** the worker runs **inside WSL2** (spawned via `wsl.exe`). Requires Node in WSL: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
+- **Linux/VPS:** the worker runs **natively** — no WSL. With `MINIDOT_SANDBOX_BWRAP=true` and `bubblewrap` installed, it's wrapped so the system is read-only and only `./workspace` is writable.
 
-> ⚠️ This is the **functional** version, not a hardened boundary yet. The worker currently runs as the distro's default user with WSL **interop** and `/mnt/c` available, so it can still reach Windows files/executables. Hardening (non-root user, disabled interop, mount namespace with only `./workspace`, network/cgroup limits) is a separate step.
+Either way:
+- `ctx.fs` is jailed to `./workspace` (or `MINIDOT_SANDBOX_DIR`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (the shared Chromium / OS viewer).
+- Tools get `ctx.browser.{open,text,url,screenshot,click,type,close}` + `ctx.fs` instead of the in-process `page()`/`host`/`import()`.
+
+> ⚠️ Windows WSL mode is the **functional** version, not a hardened boundary yet (default user, interop, `/mnt/c` visible). On Linux it's easier to close those holes (non-root user + `bwrap`/namespaces); `MINIDOT_SANDBOX_BWRAP=true` gives a read-only root with only the workspace writable.
+
+## Running on a Linux VPS (Hetzner)
+The core is portable — Node, Playwright, the model loop, Parallel search and your tools all move over unchanged. To prep a box:
+
+- `npm install` and `npx playwright install --with-deps chromium`; set `MINIDOT_HEADLESS=true` and `MINIDOT_OPEN_SHOTS=false` (no display on a server).
+- Launch with `./minidot.sh`. Run several **agents as separate processes** (or `tmux` windows) — they all attach to the one shared Chromium over CDP. `/new` uses `tmux` when inside a tmux session, else a terminal emulator, else a detached process.
+- The shared Chromium binds to **localhost** (`MINIDOT_CDP_URL`); never expose that port. Optionally run MiniDot under `systemd`/`tmux` for persistence.
+- If running as **root**, Chromium needs `--no-sandbox` (MiniDot adds it automatically on Linux root; override with `MINIDOT_CHROMIUM_ARGS`).
+- For a real sandbox, use `bubblewrap` (`MINIDOT_SANDBOX_BWRAP=true`) or a container — Linux gives you proper namespaces, no WSL/interop hacks.
 
 ## Config (`.env`)
 | var | default | meaning |
@@ -85,10 +97,14 @@ Set `MINIDOT_TOOL_SANDBOX=wsl` to run self-authored tools **inside your WSL2 dis
 | `MINIDOT_SHOT_KEEP` | `10` | keep only the newest N screenshots; older ones are deleted |
 | `MINIDOT_TOOLS_DIR` | `tools-custom` | folder for self-authored tools |
 | `PARALLEL_API_KEY` | — | optional; Parallel search key (anonymous free tier works without it) |
-| `MINIDOT_TOOL_SANDBOX` | `none` | `wsl` = run self-authored tools inside WSL2 |
-| `MINIDOT_SANDBOX_DIR` | `workspace` | folder tools may read/write in WSL mode |
-| `MINIDOT_WSL_DISTRO` | `Ubuntu-24.04` | WSL distro to use |
-| `MINIDOT_WSL_TIMEOUT_MS` | `60000` | per-call timeout (WSL worker is killed on timeout) |
+| `MINIDOT_TOOL_SANDBOX` | `none` | anything else = run tools in the isolated Linux worker (WSL on Windows, native on Linux) |
+| `MINIDOT_SANDBOX_DIR` | `workspace` | folder tools may read/write in sandbox mode |
+| `MINIDOT_SANDBOX_BWRAP` | `false` | Linux: wrap the worker in `bubblewrap` (read-only root, only workspace writable) |
+| `MINIDOT_WSL_DISTRO` | `Ubuntu-24.04` | WSL distro to use (Windows) |
+| `MINIDOT_WSL_TIMEOUT_MS` | `60000` | per-call timeout (worker is killed on timeout) |
+| `MINIDOT_NODE` | `node` | Node binary used to launch the worker (Linux) |
+| `MINIDOT_CHROMIUM_ARGS` | — | extra Chromium flags (e.g. `--no-sandbox`) |
+| `MINIDOT_TERMINAL` | `x-terminal-emulator` | terminal used by `/new` on Linux (outside tmux) |
 | `MINIDOT_AGENT` | `main` | agent name for this CLI window |
 | `MINIDOT_MAX_STEPS` | `12` | max tool-loop steps per turn |
 | `MINIDOT_TEXT_LIMIT` | `32768` | max characters returned from a page |
@@ -97,7 +113,7 @@ Set `MINIDOT_TOOL_SANDBOX=wsl` to run self-authored tools **inside your WSL2 dis
 - Assistant replies are rendered as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code blocks, links, rules).
 - Screenshots are written to `./screenshots/` (named per agent) at `MINIDOT_VIEWPORT` size (default 1600×1000).
 - The shared Chromium uses a profile at `./.chromium-profile/`.
-- To stop the shared browser, close its window (headful) or end the `chrome.exe` process.
+- To stop the shared browser, close its window (headful) or end the `chrome`/`chrome.exe` process.
 - Completely independent of the OpenDots app.
 
 

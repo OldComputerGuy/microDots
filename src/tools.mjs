@@ -13,7 +13,7 @@ import {
   importTool,
   loadCustomTools,
 } from './custom-tools.mjs';
-import { runWslTool, toWinPath } from './wsl-sandbox.mjs';
+import { runSandboxedTool, sandboxToHostPath } from './tool-sandbox.mjs';
 import { parallelSearch } from './parallel.mjs';
 
 export function openPath(file) {
@@ -202,8 +202,10 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
   const page = () => host.getPage();
   const dir = customDir();
   const sandbox = (process.env.MINIDOT_TOOL_SANDBOX ?? 'none').toLowerCase();
+  const useSandbox = sandbox !== 'none';
   const root = resolve(process.cwd(), process.env.MINIDOT_SANDBOX_DIR ?? 'workspace');
-  if (sandbox === 'wsl') mkdirSync(root, { recursive: true });
+  if (useSandbox) mkdirSync(root, { recursive: true });
+  const backendName = (code) => (useSandbox && code ? (process.platform === 'win32' ? 'wsl' : 'sandbox') : 'in-process');
 
   // Custom tools already on disk (name -> { definition, run, code }).
   const custom = await loadCustomTools(dir);
@@ -222,7 +224,7 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
     import: (spec) => import(spec),
   };
 
-  // Host side of the WSL sandbox's bridge: the agent's browser tab + openPath.
+  // Host side of the sandbox's bridge: the agent's browser tab + openPath.
   async function sandboxBridge(spec) {
     switch (spec?.op) {
       case 'browser_open':
@@ -242,7 +244,7 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
       case 'browser_close':
         return await execute('browser_close', {});
       case 'openPath':
-        openPath(toWinPath(spec.path));
+        openPath(sandboxToHostPath(spec.path));
         return { opened: true };
       default:
         throw new Error(`unknown bridge op: ${spec?.op}`);
@@ -279,7 +281,7 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
     return {
       created: name,
       savedTo: file,
-      backend: sandbox === 'wsl' && code ? 'wsl' : 'in-process',
+      backend: backendName(code),
       schema: definition.function.parameters,
       note: 'Registered. You can call it now and it will load automatically in future sessions.',
     };
@@ -288,8 +290,8 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
   async function execute(name, args) {
     const c = custom.get(name);
     if (c) {
-      if (sandbox === 'wsl' && c.code) {
-        return await runWslTool({
+      if (useSandbox && c.code) {
+        return await runSandboxedTool({
           code: c.code,
           args,
           root,
@@ -315,7 +317,7 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
           custom: [...custom.values()].map((c) => ({
             name: c.definition.function.name,
             description: c.definition.function.description,
-            backend: sandbox === 'wsl' && c.code ? 'wsl' : 'in-process',
+            backend: backendName(c.code),
           })),
         };
       }
