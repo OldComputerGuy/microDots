@@ -187,7 +187,7 @@ async function main() {
     if (line === '/new' || line.startsWith('/new ')) {
       const parts = line.slice(4).trim().split(/\s+/).filter(Boolean);
       const given = parts[0] || '';
-      const type = parts[1] || workerType; // inherit this worker's type by default
+      const type = parts[1] || 'default'; // no type stated -> default
       const spawned = spawnAgentTerminal(given, type);
       console.log(dim(`opened a new MiniDot CLI window (agent "${spawned}", worker type "${type}") — shares the same Chromium`));
       continue;

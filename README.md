@@ -59,7 +59,7 @@ A **worker type** is a markdown file describing *how a worker behaves* (persona,
 
 - **Handwritten:** just drop a file in `./worker-types/`. Shipped: `default`, `researcher`.
 - **On the fly:** the worker can author them with `save_worker_type(name, description, content)` (`list_worker_types` / `read_worker_type` / `delete_worker_type` too).
-- **Assigned at creation:** `/new <name> <type>` (defaults to the creating worker's type). Change it later with `/type <name>`.
+- **Assigned at creation:** `/new <name> <type>` — **no type stated → `default`**. Change it later with `/type <name>`.
 
 ## Web search
 MiniDot has a **`web_search`** tool backed by **Parallel** — the same provider OpenDots uses (`https://search.parallel.ai/mcp`). No API key is needed for light use; set `PARALLEL_API_KEY` for a higher authenticated tier.
