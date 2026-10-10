@@ -8,6 +8,7 @@ import { createBrowserHost } from './browser-host.mjs';
 import { createTools, openPath, pruneScreenshots } from './tools.mjs';
 import { runAgent } from './agent.mjs';
 import { createMarkdownStream } from './markdown.mjs';
+import { stopWslWorker } from './wsl-sandbox.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -102,6 +103,7 @@ async function main() {
     }
     await turn(prompt);
     await host.close();
+    stopWslWorker();
     rl.close();
     return;
   }
@@ -149,6 +151,7 @@ async function main() {
     await turn(line);
   }
   await host.close();
+  stopWslWorker();
   rl.close();
 }
 

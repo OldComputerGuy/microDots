@@ -32,6 +32,13 @@ Watch the tabs: set `MINIDOT_HEADLESS=false` in `.env` **before first launch** (
 | `/shots` | open the latest screenshot |
 | `/tools`, `/help`, `/exit` | |
 
+## Web search
+MiniDot has a **`web_search`** tool backed by **Parallel** — the same provider OpenDots uses (`https://search.parallel.ai/mcp`). No API key is needed for light use; set `PARALLEL_API_KEY` for a higher authenticated tier.
+
+- `web_search(query, objective?, urls?)` → `{ query, count, results: [{ title, url, publish_date, excerpt }] }`.
+- Use it for current information, news, docs and comparisons — it beats opening a search engine in the browser (which gets blocked).
+- It's a **builtin**, so it runs on Windows even when `MINIDOT_TOOL_SANDBOX=wsl`.
+
 ## Self-authored tools
 MiniDot can **write its own tools** and use them immediately.
 
@@ -48,7 +55,17 @@ export async function run(args, ctx) {
 }
 ```
 
-> ⚠️ Custom tool code runs **in the MiniDot Node process with your full local privileges** (filesystem, network, child processes). Only let it create tools you trust; review `./tools-custom/*.mjs` and delete anything unwanted.
+> ⚠️ Custom tool code runs **in the MiniDot Node process with your full local privileges** (filesystem, network, child processes) when the sandbox is off. Only let it create tools you trust; review `./tools-custom/*.mjs` and delete anything unwanted.
+
+### WSL2 sandbox backend (opt-in)
+Set `MINIDOT_TOOL_SANDBOX=wsl` to run self-authored tools **inside your WSL2 distro** instead of in-process:
+
+- A persistent **worker inside WSL** executes each tool (one at a time) and talks to MiniDot over newline-delimited JSON.
+- `ctx.fs` is jailed to `./workspace` (or `MINIDOT_SANDBOX_DIR`); `ctx.fetch` runs natively inside WSL; `ctx.browser.*` and `ctx.openPath` are **bridged back to Windows** (the shared Chromium / OS viewer).
+- Requires **Node inside WSL**: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
+- Tools get the same API surface as in-process (`ctx.browser.{open,text,url,screenshot,click,type,close}` instead of `page()`), plus `ctx.fs`.
+
+> ⚠️ This is the **functional** version, not a hardened boundary yet. The worker currently runs as the distro's default user with WSL **interop** and `/mnt/c` available, so it can still reach Windows files/executables. Hardening (non-root user, disabled interop, mount namespace with only `./workspace`, network/cgroup limits) is a separate step.
 
 ## Config (`.env`)
 | var | default | meaning |
@@ -66,6 +83,11 @@ export async function run(args, ctx) {
 | `MINIDOT_SHOT_FULLPAGE` | `false` | `true` = capture the whole page, not just the viewport |
 | `MINIDOT_SHOT_KEEP` | `10` | keep only the newest N screenshots; older ones are deleted |
 | `MINIDOT_TOOLS_DIR` | `tools-custom` | folder for self-authored tools |
+| `PARALLEL_API_KEY` | — | optional; Parallel search key (anonymous free tier works without it) |
+| `MINIDOT_TOOL_SANDBOX` | `none` | `wsl` = run self-authored tools inside WSL2 |
+| `MINIDOT_SANDBOX_DIR` | `workspace` | folder tools may read/write in WSL mode |
+| `MINIDOT_WSL_DISTRO` | `Ubuntu-24.04` | WSL distro to use |
+| `MINIDOT_WSL_TIMEOUT_MS` | `60000` | per-call timeout (WSL worker is killed on timeout) |
 | `MINIDOT_AGENT` | `main` | agent name for this CLI window |
 | `MINIDOT_MAX_STEPS` | `12` | max tool-loop steps per turn |
 | `MINIDOT_TEXT_LIMIT` | `8000` | max characters returned from a page |

@@ -42,8 +42,9 @@ function sourceFor({ name, description, parameters, code }) {
   const definition = { type: 'function', function: { name, description, parameters } };
   return [
     `// MiniDot custom tool "${name}" - auto-generated, safe to edit or delete.`,
-    `// Runs in the MiniDot process; ctx = { agentId, page(), host, clip, textLimit, fetch, openPath, import() }.`,
+    `// run() is used by the in-process backend; code is shipped to the WSL sandbox.`,
     `export const definition = ${JSON.stringify(definition, null, 2)};`,
+    `export const code = ${JSON.stringify(code)};`,
     ``,
     `export async function run(args, ctx) {`,
     code,
@@ -66,10 +67,10 @@ export async function importTool(dir, name) {
   if (typeof mod.run !== 'function' || !mod.definition?.function) {
     throw new Error(`tool "${name}" must export run() and definition`);
   }
-  return { definition: mod.definition, run: mod.run };
+  return { definition: mod.definition, run: mod.run, code: typeof mod.code === 'string' ? mod.code : null };
 }
 
-// Load every saved custom tool. Returns Map<name, { definition, run }>.
+// Load every saved custom tool. Returns Map<name, { definition, run, code }>.
 export async function loadCustomTools(dir = customDir()) {
   const out = new Map();
   let files = [];
@@ -81,8 +82,8 @@ export async function loadCustomTools(dir = customDir()) {
   for (const f of files) {
     const name = f.replace(/\.mjs$/i, '');
     try {
-      const { definition, run } = await importTool(dir, name);
-      out.set(definition.function.name ?? name, { definition, run });
+      const { definition, run, code } = await importTool(dir, name);
+      out.set(definition.function.name ?? name, { definition, run, code });
     } catch (e) {
       console.error(`MiniDot: could not load custom tool ${f}: ${e?.message ?? e}`);
     }

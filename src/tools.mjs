@@ -12,6 +12,8 @@ import {
   importTool,
   loadCustomTools,
 } from './custom-tools.mjs';
+import { runWslTool, toWinPath } from './wsl-sandbox.mjs';
+import { parallelSearch } from './parallel.mjs';
 
 export function openPath(file) {
   try {
@@ -44,6 +46,28 @@ export function pruneScreenshots(keep = 10) {
 }
 
 const BUILTINS = [
+  {
+    type: 'function',
+    function: {
+      name: 'web_search',
+      description:
+        'Search the public web (via Parallel) and return the top sources with title, url and excerpt. Use this for current information, news, documentation and comparisons. Prefer it over opening a search engine in the browser. Pass a few keywords as `query`; optionally give a specific `objective` or a list of `urls` to read.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { type: 'string', description: 'What to search for (keywords or a short question)' },
+          objective: { type: 'string', description: 'Optional one-line description of what you are trying to find' },
+          urls: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional specific public URLs to read instead of searching',
+          },
+        },
+        required: ['query'],
+        additionalProperties: false,
+      },
+    },
+  },
   {
     type: 'function',
     function: {
@@ -130,7 +154,7 @@ const BUILTINS = [
     function: {
       name: 'create_tool',
       description:
-        'Create a new tool for yourself. Provide a name, a description, a JSON-Schema `parameters` object, and the JavaScript body of `async function run(args, ctx)`. `return` a JSON-serialisable result. Available at once and saved to ./tools-custom/ for future sessions. ctx = { agentId, page() -> your browser tab, host, clip(s), textLimit }; you can also `await import(nodeModule)` and use global fetch.',
+        'Create a new tool for yourself. Provide a name, a description, a JSON-Schema `parameters` object, and the JavaScript body of `async function run(args, ctx)`. `return` a JSON-serialisable result. Available at once and saved to ./tools-custom/ for future sessions. ctx always has agentId, fetch(url,opts), log(...). In the WSL sandbox it also has ctx.fs (a filesystem jailed to the sandbox folder) and ctx.browser.{open,text,url,screenshot,click,type,close}. In in-process mode it has page() (your browser tab), host, clip, textLimit, openPath and import().',
       parameters: {
         type: 'object',
         properties: {
@@ -155,8 +179,11 @@ export async function createTools({ host, agentId, textLimit = 8000 } = {}) {
   const clip = (s) => (typeof s === 'string' ? s.slice(0, textLimit) : '');
   const page = () => host.getPage();
   const dir = customDir();
+  const sandbox = (process.env.MINIDOT_TOOL_SANDBOX ?? 'none').toLowerCase();
+  const root = resolve(process.cwd(), process.env.MINIDOT_SANDBOX_DIR ?? 'workspace');
+  if (sandbox === 'wsl') mkdirSync(root, { recursive: true });
 
-  // Custom tools already on disk (name -> { definition, run }).
+  // Custom tools already on disk (name -> { definition, run, code }).
   const custom = await loadCustomTools(dir);
 
   // Live tool list handed to the model; mutated when new tools are created.
@@ -173,6 +200,33 @@ export async function createTools({ host, agentId, textLimit = 8000 } = {}) {
     import: (spec) => import(spec),
   };
 
+  // Host side of the WSL sandbox's bridge: the agent's browser tab + openPath.
+  async function sandboxBridge(spec) {
+    switch (spec?.op) {
+      case 'browser_open':
+        return await execute('browser_open', { url: spec.url });
+      case 'browser_text':
+        return await execute('browser_text', {});
+      case 'browser_url':
+        return { url: (await page()).url() };
+      case 'browser_screenshot': {
+        const { __image, ...rest } = await execute('browser_screenshot', {});
+        return rest;
+      }
+      case 'browser_click':
+        return await execute('browser_click', { selector: spec.selector });
+      case 'browser_type':
+        return await execute('browser_type', { selector: spec.selector, text: spec.text });
+      case 'browser_close':
+        return await execute('browser_close', {});
+      case 'openPath':
+        openPath(toWinPath(spec.path));
+        return { opened: true };
+      default:
+        throw new Error(`unknown bridge op: ${spec?.op}`);
+    }
+  }
+
   async function createTool(args) {
     const name = String(args?.name ?? '').trim();
     validateName(name, BUILTIN_NAMES);
@@ -188,7 +242,7 @@ export async function createTools({ host, agentId, textLimit = 8000 } = {}) {
       parameters,
       code: args.code,
     });
-    const { definition, run } = await importTool(dir, name);
+    const { definition, run, code } = await importTool(dir, name);
 
     const existing = custom.get(name);
     if (existing) {
@@ -198,11 +252,12 @@ export async function createTools({ host, agentId, textLimit = 8000 } = {}) {
     } else {
       definitions.push(definition);
     }
-    custom.set(name, { definition, run });
+    custom.set(name, { definition, run, code });
 
     return {
       created: name,
       savedTo: file,
+      backend: sandbox === 'wsl' && code ? 'wsl' : 'in-process',
       schema: definition.function.parameters,
       note: 'Registered. You can call it now and it will load automatically in future sessions.',
     };
@@ -210,9 +265,26 @@ export async function createTools({ host, agentId, textLimit = 8000 } = {}) {
 
   async function execute(name, args) {
     const c = custom.get(name);
-    if (c) return await c.run(args, ctx);
+    if (c) {
+      if (sandbox === 'wsl' && c.code) {
+        return await runWslTool({
+          code: c.code,
+          args,
+          root,
+          agentId,
+          bridge: sandboxBridge,
+          log: (m) => console.log(`  [${name}] ${m}`),
+          textLimit,
+        });
+      }
+      return await c.run(args, ctx);
+    }
 
     switch (name) {
+      case 'web_search': {
+        const results = await parallelSearch({ query: args.query, objective: args.objective, urls: args.urls });
+        return { query: args.query, count: results.length, results };
+      }
       case 'create_tool':
         return await createTool(args);
       case 'http_get': {
