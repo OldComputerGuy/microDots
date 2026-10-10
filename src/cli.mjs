@@ -28,6 +28,11 @@ const maxDepth = Number(process.env.MINIDOT_MAX_DEPTH ?? 3);
 const maxAgents = Number(process.env.MINIDOT_MAX_AGENTS ?? 16);
 const maxConcurrent = Number(process.env.MINIDOT_MAX_CONCURRENT ?? 8);
 const debug = (process.env.MINIDOT_DEBUG ?? 'false') === 'true';
+const compactEnabled = (process.env.MINIDOT_COMPACT ?? 'false') === 'true';
+const contextTokens = Number(process.env.MINIDOT_CONTEXT_TOKENS ?? 24000);
+const keepRecent = Number(process.env.MINIDOT_KEEP_RECENT ?? 6);
+const offloadTokens = Number(process.env.MINIDOT_OFFLOAD_TOKENS ?? 4000);
+const summaryModel = process.env.MINIDOT_SUMMARY_MODEL || model;
 const agentName = process.env.MINIDOT_AGENT || 'main';
 
 if (!apiKey) {
@@ -103,6 +108,21 @@ function makeOnTool(depth = 0) {
   };
 }
 const onTool = makeOnTool(0);
+
+// Compaction config for an agent (space + indent depth).
+function compactFor(space, depth) {
+  return {
+    enabled: compactEnabled,
+    maxTokens: contextTokens,
+    keepRecent,
+    charsPerToken,
+    offloadTokens,
+    summaryModel,
+    spaceDir: space,
+    headChars: 2000,
+    onNote: (m) => console.log(dim(`${'  '.repeat(depth)}  · ${m}`)),
+  };
+}
 
 function slugify(s) {
   return (
@@ -229,7 +249,7 @@ async function main() {
 
       let status = 'done';
       try {
-        await runAgent({ messages: childMessages, tools: childTools, model, apiKey, baseUrl, textLimit, maxSteps, onTool: makeOnTool(depth + 1) });
+        await runAgent({ messages: childMessages, tools: childTools, model, apiKey, baseUrl, textLimit, maxSteps, onTool: makeOnTool(depth + 1), compact: compactFor(childSpace, depth + 1) });
       } catch {
         status = 'failed';
       } finally {
@@ -318,6 +338,7 @@ async function main() {
         onToken: (t) => md.push(t),
         onTool,
         confirm: confirmCreate,
+        compact: compactFor(spacePath, 0),
       });
     } catch (e) {
       md.flush();

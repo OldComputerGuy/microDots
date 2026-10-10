@@ -1,4 +1,8 @@
 // MiniDot agent: a single model + tool loop. No framework.
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { resolve, relative } from 'node:path';
+
+const SUMMARY_PREFIX = '[CONVERSATION SUMMARY]';
 
 export async function chatStep({ messages, tools, model, apiKey, baseUrl, onToken }) {
   const res = await fetch(`${baseUrl}/chat/completions`, {
@@ -57,6 +61,89 @@ export async function chatStep({ messages, tools, model, apiKey, baseUrl, onToke
   return { content, toolCalls: toolCalls.filter(Boolean) };
 }
 
+// --- context compaction -------------------------------------------------
+const messageChars = (m) => {
+  let n = 0;
+  if (typeof m.content === 'string') n += m.content.length;
+  else if (Array.isArray(m.content)) n += JSON.stringify(m.content).length;
+  if (m.tool_calls) n += JSON.stringify(m.tool_calls).length;
+  return n;
+};
+
+function estTokens(messages, charsPerToken) {
+  let chars = 0;
+  for (const m of messages) chars += messageChars(m);
+  return Math.ceil(chars / (charsPerToken || 4));
+}
+
+const summaryIndex = (messages) =>
+  messages.findIndex(
+    (m, i) => i > 0 && m.role === 'system' && typeof m.content === 'string' && m.content.startsWith(SUMMARY_PREFIX),
+  );
+
+// First message we keep verbatim — never start on an orphaned tool result.
+function splitIndex(messages, keepRecent) {
+  let split = Math.max(1, messages.length - keepRecent);
+  while (split > 1 && messages[split]?.role === 'tool') split--;
+  return split;
+}
+
+async function summarizeChunk(chunk, prior, { model, apiKey, baseUrl, charsPerToken }) {
+  const transcript = chunk
+    .map((m) => {
+      const c = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
+      const calls = m.tool_calls?.length ? ` [called: ${m.tool_calls.map((t) => t.function?.name).join(', ')}]` : '';
+      return `${m.role.toUpperCase()}: ${c}${calls}`;
+    })
+    .join('\n');
+  const cap = 12000; // chars of transcript fed to the summarizer (keep the tail)
+  const body = transcript.length > cap ? transcript.slice(transcript.length - cap) : transcript;
+  const sys =
+    'You compress an ongoing agent conversation into a concise but COMPLETE summary. Preserve: the current goal, facts learned, decisions, source URLs, file paths, important tool results, and open questions. Be specific and factual; never invent. Output only the summary.';
+  const user = (prior ? `Summary so far:\n${prior}\n\n` : '') + `New conversation to fold in:\n${body}`;
+  const res = await fetch(`${baseUrl}/chat/completions`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: user },
+      ],
+      stream: false,
+    }),
+  });
+  if (!res.ok) throw new Error(`summarize HTTP ${res.status}`);
+  const j = await res.json();
+  return (j.choices?.[0]?.message?.content || '').trim() || prior || '';
+}
+
+async function compactMessages(messages, compact, cfg) {
+  const sIdx = summaryIndex(messages);
+  const prior = sIdx >= 0 ? messages[sIdx].content.slice(SUMMARY_PREFIX.length).trim() : '';
+  const split = splitIndex(messages, compact.keepRecent);
+  if (split <= 1) return false;
+  const chunk = messages.slice(1, split);
+  if (!chunk.length) return false;
+  const summary = await summarizeChunk(chunk, prior, {
+    model: compact.summaryModel || cfg.model,
+    apiKey: cfg.apiKey,
+    baseUrl: cfg.baseUrl,
+    charsPerToken: compact.charsPerToken,
+  });
+  if (!summary) return false;
+  messages.splice(1, split - 1, { role: 'system', content: `${SUMMARY_PREFIX}\n${summary}` });
+  return true;
+}
+
+function offloadToolResult(spaceDir, name, content) {
+  const dir = resolve(spaceDir, 'notes');
+  mkdirSync(dir, { recursive: true });
+  const file = resolve(dir, `${name}-${Date.now()}.txt`);
+  writeFileSync(file, content);
+  return relative(process.cwd(), file).replace(/\\/g, '/');
+}
+
 // Runs the assistant↔tool loop until the model stops requesting tools.
 export async function runAgent({
   messages,
@@ -69,8 +156,21 @@ export async function runAgent({
   onToken,
   onTool,
   confirm,
+  compact = {},
 }) {
+  const cpt = compact.charsPerToken || 4;
   for (let step = 0; step < maxSteps; step++) {
+    // Compact before the next model call if the context is over budget.
+    if (compact.enabled && compact.maxTokens && estTokens(messages, cpt) > compact.maxTokens) {
+      try {
+        if (await compactMessages(messages, compact, { model, apiKey, baseUrl })) {
+          compact.onNote?.(`compacted context (~${estTokens(messages, cpt)} tokens now)`);
+        }
+      } catch (e) {
+        compact.onNote?.(`compaction failed: ${e?.message ?? e}`);
+      }
+    }
+
     const { content, toolCalls } = await chatStep({
       messages,
       tools: tools.definitions,
@@ -118,11 +218,24 @@ export async function runAgent({
         const { __image, ...rest } = result;
         result = rest;
       }
-      messages.push({
-        role: 'tool',
-        tool_call_id: tc.id,
-        content: JSON.stringify(result).slice(0, textLimit),
-      });
+
+      let content = JSON.stringify(result);
+      // Big tool outputs: offload the full text to the worker's space and keep
+      // only a short head + a pointer in context (nothing is lost).
+      const offChars = compact.enabled ? Math.round((compact.offloadTokens ?? 0) * cpt) : 0;
+      if (offChars > 0 && compact.spaceDir && content.length > offChars) {
+        try {
+          const rel = offloadToolResult(compact.spaceDir, tc.name, content);
+          const head = content.slice(0, compact.headChars ?? 2000);
+          content = `${head}\n…[truncated ${content.length - head.length} chars; full output saved to ${rel}]`;
+        } catch {
+          content = content.slice(0, textLimit);
+        }
+      } else {
+        content = content.slice(0, textLimit);
+      }
+
+      messages.push({ role: 'tool', tool_call_id: tc.id, content });
       if (image) {
         messages.push({
           role: 'user',

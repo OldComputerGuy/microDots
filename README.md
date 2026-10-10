@@ -131,6 +131,14 @@ spaces/main/subagents/node-lts/
   mission.md  worker_type  report.md  report.json  shots/
 ```
 
+## Context compaction
+Long runs don't grow without bound. With `MINIDOT_COMPACT=true`:
+
+- When the estimated context (`chars ÷ MINIDOT_CHARS_PER_TOKEN`) exceeds **`MINIDOT_CONTEXT_TOKENS`**, the **oldest messages are summarized** (a rolling summary) and replaced. Kept: the system prompt + the summary + the last **`MINIDOT_KEEP_RECENT`** messages. Tool‑call/result pairs are never split.
+- Tool outputs larger than **`MINIDOT_OFFLOAD_TOKENS`** are written in full to `spaces/<worker>/notes/` and replaced in context by a short head **+ a pointer** — so nothing is lost.
+
+Applies to the root agent **and every sub-agent**. Each compaction costs one extra (non‑streaming) model call; set `MINIDOT_SUMMARY_MODEL` to a cheaper model for those. The token counts are approximate (no local tokenizer), governed by the chars/token ratio.
+
 ## Config (`.env`)
 | var | default | meaning |
 |---|---|---|
@@ -172,6 +180,11 @@ spaces/main/subagents/node-lts/
 | `MINIDOT_TEXT_LIMIT` | `32768` | max characters of a tool result fed to the model |
 | `MINIDOT_TEXT_TOKENS` | — | if set, budget tool results in **tokens** instead (overrides `TEXT_LIMIT`) |
 | `MINIDOT_CHARS_PER_TOKEN` | `4` | ratio used to convert the token budget to characters |
+| `MINIDOT_COMPACT` | `false` | enable context compaction (trim + summarize) |
+| `MINIDOT_CONTEXT_TOKENS` | `24000` | summarize when estimated context exceeds this |
+| `MINIDOT_KEEP_RECENT` | `6` | recent messages kept verbatim during compaction |
+| `MINIDOT_OFFLOAD_TOKENS` | `4000` | offload tool outputs larger than this to the space |
+| `MINIDOT_SUMMARY_MODEL` | *(MINIDOT_MODEL)* | model used for summaries |
 
 ## Notes
 - Assistant replies are rendered as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code blocks, links, rules).
