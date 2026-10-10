@@ -18,7 +18,10 @@ const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1
 const model = process.env.MINIDOT_MODEL ?? 'deepseek/deepseek-v4.1-flash';
 const headless = (process.env.MINIDOT_HEADLESS ?? 'true') !== 'false';
 const isolate = (process.env.MINIDOT_ISOLATE_AGENTS ?? 'false') === 'true';
-const textLimit = Number(process.env.MINIDOT_TEXT_LIMIT ?? 32768);
+const charsPerToken = Number(process.env.MINIDOT_CHARS_PER_TOKEN ?? 4);
+const textTokens = Number(process.env.MINIDOT_TEXT_TOKENS ?? 0);
+// Prefer a token budget when given; clip tool results to (tokens * chars/token).
+const textLimit = textTokens > 0 ? Math.round(textTokens * charsPerToken) : Number(process.env.MINIDOT_TEXT_LIMIT ?? 32768);
 const maxSteps = Number(process.env.MINIDOT_MAX_STEPS ?? 12);
 const allowSpawn = (process.env.MINIDOT_ALLOW_SPAWN ?? 'false') === 'true';
 const maxDepth = Number(process.env.MINIDOT_MAX_DEPTH ?? 3);

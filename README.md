@@ -169,7 +169,9 @@ spaces/main/subagents/node-lts/
 | `MINIDOT_TERMINAL` | `x-terminal-emulator` | terminal used by `/new` on Linux (outside tmux) |
 | `MINIDOT_AGENT` | `main` | agent name for this CLI window |
 | `MINIDOT_MAX_STEPS` | `12` | max tool-loop steps per turn |
-| `MINIDOT_TEXT_LIMIT` | `32768` | max characters returned from a page |
+| `MINIDOT_TEXT_LIMIT` | `32768` | max characters of a tool result fed to the model |
+| `MINIDOT_TEXT_TOKENS` | — | if set, budget tool results in **tokens** instead (overrides `TEXT_LIMIT`) |
+| `MINIDOT_CHARS_PER_TOKEN` | `4` | ratio used to convert the token budget to characters |
 
 ## Notes
 - Assistant replies are rendered as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code blocks, links, rules).
