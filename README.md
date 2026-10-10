@@ -28,10 +28,11 @@ Watch the tabs: set `MINIDOT_HEADLESS=false` in `.env` **before first launch** (
 ### REPL commands
 | command | effect |
 |---|---|
-| `/new [name]` | open a **new CLI window** (new agent, own tab) |
+| `/new [name] [type]` | open a **new worker** (own CLI + space + worker type) |
 | `/tools` | list built-in + custom tools, with descriptions and backend |
 | `/delete <name>` | delete a custom tool (and its file) |
 | `/skills` | list saved skills |
+| `/type [name]` | show or set this worker's type |
 | `/mission [text]` | show or set this space's `mission.md` |
 | `/reset` | reset this conversation |
 | `/shots` | open the latest screenshot |
@@ -50,7 +51,15 @@ spaces/
 
 - The space is also the **sandbox root**, so a tool's `ctx.fs` writes land in `spaces/<worker>/` — enforced, not convention.
 - `mission.md` is created on first run (seed it via `MINIDOT_MISSION`) and shown to the worker each session; edit it directly or with `/mission <text>`.
+- The chosen **worker type** is recorded in `spaces/<worker>/worker_type` so it persists.
 - `/new alpha` makes a new worker with its own `spaces/alpha/`. Set `MINIDOT_SPACE=research` to point a worker at a specific (possibly shared) space.
+
+## Worker types
+A **worker type** is a markdown file describing *how a worker behaves* (persona, method, rules). It lives in `./worker-types/<name>.md` and is injected into the worker's system prompt.
+
+- **Handwritten:** just drop a file in `./worker-types/`. Shipped: `default`, `researcher`.
+- **On the fly:** the worker can author them with `save_worker_type(name, description, content)` (`list_worker_types` / `read_worker_type` / `delete_worker_type` too).
+- **Assigned at creation:** `/new <name> <type>` (defaults to the creating worker's type). Change it later with `/type <name>`.
 
 ## Web search
 MiniDot has a **`web_search`** tool backed by **Parallel** — the same provider OpenDots uses (`https://search.parallel.ai/mcp`). No API key is needed for light use; set `PARALLEL_API_KEY` for a higher authenticated tier.
@@ -123,6 +132,8 @@ The core is portable — Node, Playwright, the model loop, Parallel search and y
 | `MINIDOT_SHOT_KEEP` | `10` | keep only the newest N screenshots; older ones are deleted |
 | `MINIDOT_TOOLS_DIR` | `tools-custom` | folder for self-authored tools |
 | `MINIDOT_SKILLS_DIR` | `skills` | folder for saved skills (recipes) |
+| `MINIDOT_WORKER_TYPES_DIR` | `worker-types` | folder for worker-type behaviour files |
+| `MINIDOT_WORKER_TYPE` | *(space)* | worker type for a new worker (else the space's, else `default`) |
 | `MINIDOT_APPROVE_CREATE_TOOL` | `true` | ask before saving a new tool (interactive) |
 | `PARALLEL_API_KEY` | — | optional; Parallel search key (anonymous free tier works without it) |
 | `MINIDOT_TOOL_SANDBOX` | `none` | anything else = run tools in the isolated Linux worker (WSL on Windows, native on Linux) |

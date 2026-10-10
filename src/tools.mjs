@@ -17,6 +17,7 @@ import { runSandboxedTool, sandboxToHostPath } from './tool-sandbox.mjs';
 import { parallelSearch, parallelFetch } from './parallel.mjs';
 import { listSkills, readSkill, saveSkill, deleteSkill } from './skills.mjs';
 import { spaceDir, shotsDir } from './space.mjs';
+import { listWorkerTypes, readWorkerType, saveWorkerType, deleteWorkerType } from './worker-types.mjs';
 
 export function openPath(file) {
   try {
@@ -263,6 +264,58 @@ const BUILTINS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'save_worker_type',
+      description:
+        'Create or update a worker type — a markdown file describing how a worker behaves (persona, method, rules). Saved to ./worker-types/<name>.md. Handwritten ones can just be dropped in that folder.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Type name (letters, digits, hyphen, underscore)' },
+          description: { type: 'string', description: 'One-line summary' },
+          content: { type: 'string', description: 'The behaviour description (markdown)' },
+        },
+        required: ['name', 'description', 'content'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_worker_types',
+      description: 'List the available worker types.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_worker_type',
+      description: 'Read the full markdown of a worker type.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Type name' } },
+        required: ['name'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_worker_type',
+      description: 'Delete a worker type by name.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Type name' } },
+        required: ['name'],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 const BUILTIN_NAMES = new Set(BUILTINS.map((t) => t.function.name));
@@ -402,6 +455,16 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
         const file = deleteSkill(String(args.name));
         return { deleted: args.name, file };
       }
+      case 'save_worker_type': {
+        const file = saveWorkerType({ name: args.name, description: args.description, content: args.content });
+        return { saved: args.name, file };
+      }
+      case 'list_worker_types':
+        return { workerTypes: listWorkerTypes().map(({ name, description }) => ({ name, description })) };
+      case 'read_worker_type':
+        return { name: args.name, text: readWorkerType(String(args.name)) };
+      case 'delete_worker_type':
+        return { deleted: args.name, file: deleteWorkerType(String(args.name)) };
       case 'create_tool':
         return await createTool(args, confirm);
       case 'list_tools': {

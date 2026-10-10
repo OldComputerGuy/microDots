@@ -53,3 +53,22 @@ export function writeMission(agentId, text) {
   writeFileSync(missionPath(agentId), text.endsWith('\n') ? text : `${text}\n`);
   return missionPath(agentId);
 }
+
+// The chosen worker type is recorded in the space so it persists across sessions.
+export function typePath(agentId = 'main') {
+  return resolve(spaceDir(agentId), 'worker_type');
+}
+
+export function getSpaceType(agentId = 'main') {
+  try {
+    return readFileSync(typePath(agentId), 'utf8').trim();
+  } catch {
+    return '';
+  }
+}
+
+export function setSpaceType(agentId, type) {
+  mkdirSync(spaceDir(agentId), { recursive: true });
+  writeFileSync(typePath(agentId), `${type}\n`);
+  return typePath(agentId);
+}

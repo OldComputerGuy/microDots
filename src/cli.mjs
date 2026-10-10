@@ -10,7 +10,8 @@ import { runAgent } from './agent.mjs';
 import { createMarkdownStream } from './markdown.mjs';
 import { stopSandboxWorker } from './tool-sandbox.mjs';
 import { listSkills } from './skills.mjs';
-import { ensureSpace, readMission, writeMission, shotsDir } from './space.mjs';
+import { ensureSpace, readMission, writeMission, shotsDir, getSpaceType, setSpaceType } from './space.mjs';
+import { listWorkerTypes, readWorkerType } from './worker-types.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -38,6 +39,17 @@ const SYSTEM_BASE = `You are MiniDot, a small autonomous agent with your own bro
 // Each worker has its own space: spaces/<worker_name>/ (mission.md + files).
 const spacePath = ensureSpace(agentName);
 const mission = readMission(agentName).trim();
+
+// Worker type: chosen at creation (MINIDOT_WORKER_TYPE), else the one recorded
+// in the space, else "default". Persisted so it sticks across sessions.
+let workerType = (process.env.MINIDOT_WORKER_TYPE || '').trim() || getSpaceType(agentName) || 'default';
+setSpaceType(agentName, workerType);
+const workerTypeText = readWorkerType(workerType).trim();
+
+const TYPE_SECTION = workerTypeText
+  ? `\n\nYour worker type "${workerType}" (how you behave):\n${workerTypeText}`
+  : `\n\nYour worker type is "${workerType}" (no description file found in ./worker-types/).`;
+
 const SPACE_SECTION = `\n\nYour space: ${spacePath}
 Keep the files you produce (documents, notes, outputs, downloads) here.`;
 const MISSION_SECTION = mission ? `\n\nYour mission (spaces/${agentName}/mission.md):\n${mission}` : '';
@@ -48,7 +60,7 @@ const SKILLS_SECTION = skillList.length
       .map((s) => `- ${s.name}: ${s.description}`)
       .join('\n')}`
   : '';
-const SYSTEM = SYSTEM_BASE + SPACE_SECTION + MISSION_SECTION + SKILLS_SECTION;
+const SYSTEM = SYSTEM_BASE + TYPE_SECTION + SPACE_SECTION + MISSION_SECTION + SKILLS_SECTION;
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const ask = (q) => new Promise((r) => rl.question(q, (a) => r(a)));
@@ -73,9 +85,10 @@ function onTool(kind, name, data) {
   }
 }
 
-function spawnAgentTerminal(name) {
+function spawnAgentTerminal(name, type) {
   const env = { ...process.env };
   env.MINIDOT_AGENT = name || `agent-${Date.now().toString(36)}`;
+  if (type) env.MINIDOT_WORKER_TYPE = type;
   if (process.platform === 'win32') {
     const bat = resolve(process.cwd(), 'minidot.bat');
     const comspec = process.env.ComSpec || 'cmd.exe';
@@ -99,10 +112,11 @@ function spawnAgentTerminal(name) {
 
 function help() {
   console.log(dim('commands:'));
-  console.log(dim('  /new [name]   open a new MiniDot CLI (a new agent, own tab)'));
+  console.log(dim('  /new [name] [type]   open a new MiniDot CLI (new worker + space)'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
+  console.log(dim('  /type [name]  show or set this worker\'s type'));
   console.log(dim('  /mission [t]  show or set this space\'s mission.md'));
   console.log(dim('  /reset        reset this conversation'));
   console.log(dim('  /shots        open the latest screenshot'));
@@ -159,7 +173,7 @@ async function main() {
 
   console.log(
     cyan('MiniDot') +
-      dim(` · agent="${agentName}" · space=spaces/${agentName} · model=${model} · browser=${headless ? 'headless' : 'headful'} shared via ${host.cdpUrl}`),
+      dim(` · agent="${agentName}" · type=${workerType} · space=spaces/${agentName} · model=${model} · browser=${headless ? 'headless' : 'headful'} shared via ${host.cdpUrl}`),
   );
   help();
   while (true) {
@@ -171,9 +185,11 @@ async function main() {
       continue;
     }
     if (line === '/new' || line.startsWith('/new ')) {
-      const given = line.slice(4).trim();
-      const spawned = spawnAgentTerminal(given);
-      console.log(dim(`opened a new MiniDot CLI window (agent "${spawned}") — it attaches to the same shared Chromium`));
+      const parts = line.slice(4).trim().split(/\s+/).filter(Boolean);
+      const given = parts[0] || '';
+      const type = parts[1] || workerType; // inherit this worker's type by default
+      const spawned = spawnAgentTerminal(given, type);
+      console.log(dim(`opened a new MiniDot CLI window (agent "${spawned}", worker type "${type}") — shares the same Chromium`));
       continue;
     }
     if (line === '/tools') {
@@ -213,6 +229,31 @@ async function main() {
         const file = writeMission(agentName, text);
         messages[0] = { role: 'system', content: `${SYSTEM}\n\nYour mission (spaces/${agentName}/mission.md):\n${text}` };
         console.log(dim(`mission updated: ${file}`));
+      }
+      continue;
+    }
+    if (line === '/type' || line.startsWith('/type ')) {
+      const name = line.slice(5).trim();
+      if (!name) {
+        console.log(dim(`worker type: ${workerType}`));
+        const types = listWorkerTypes();
+        if (types.length) {
+          console.log(dim('available:'));
+          for (const t of types) console.log(`  ${t.name}${dim(` — ${t.description}`)}`);
+        }
+      } else {
+        const text = readWorkerType(name).trim();
+        if (!text) {
+          console.log(yellow(`  no worker type "${name}" in ./worker-types/`));
+          continue;
+        }
+        workerType = name;
+        setSpaceType(agentName, name);
+        messages[0] = {
+          role: 'system',
+          content: SYSTEM_BASE + `\n\nYour worker type "${name}" (how you behave):\n${text}` + SPACE_SECTION + MISSION_SECTION + SKILLS_SECTION,
+        };
+        console.log(dim(`worker type set to "${name}"`));
       }
       continue;
     }
