@@ -1,8 +1,8 @@
 // MiniDot CLI: one agent per process, all attached to one shared Chromium.
 // `/new` opens a new terminal (a new agent).
 import readline from 'node:readline';
-import { readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
+import { resolve, relative, join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { createBrowserHost } from './browser-host.mjs';
 import { createTools, openPath, pruneScreenshots } from './tools.mjs';
@@ -20,6 +20,10 @@ const headless = (process.env.MINIDOT_HEADLESS ?? 'true') !== 'false';
 const isolate = (process.env.MINIDOT_ISOLATE_AGENTS ?? 'false') === 'true';
 const textLimit = Number(process.env.MINIDOT_TEXT_LIMIT ?? 32768);
 const maxSteps = Number(process.env.MINIDOT_MAX_STEPS ?? 12);
+const allowSpawn = (process.env.MINIDOT_ALLOW_SPAWN ?? 'false') === 'true';
+const maxDepth = Number(process.env.MINIDOT_MAX_DEPTH ?? 2);
+const maxAgents = Number(process.env.MINIDOT_MAX_AGENTS ?? 8);
+const debug = (process.env.MINIDOT_DEBUG ?? 'false') === 'true';
 const agentName = process.env.MINIDOT_AGENT || 'main';
 
 if (!apiKey) {
@@ -40,27 +44,34 @@ const SYSTEM_BASE = `You are MiniDot, a small autonomous agent with your own bro
 const spacePath = ensureSpace(agentName);
 const mission = readMission(agentName).trim();
 
-// Worker type: chosen at creation (MINIDOT_WORKER_TYPE), else the one recorded
-// in the space, else "default". Persisted so it sticks across sessions.
 let workerType = (process.env.MINIDOT_WORKER_TYPE || '').trim() || getSpaceType(agentName) || 'default';
 setSpaceType(agentName, workerType);
-const workerTypeText = readWorkerType(workerType).trim();
 
-const TYPE_SECTION = workerTypeText
-  ? `\n\nYour worker type "${workerType}" (how you behave):\n${workerTypeText}`
-  : `\n\nYour worker type is "${workerType}" (no description file found in ./worker-types/).`;
+// Build the system prompt for a worker or sub-agent.
+function buildSystem({ space, type, mission: missionText, context, deliverables, isSub }) {
+  const typeText = readWorkerType(type).trim();
+  let s = SYSTEM_BASE;
+  s += typeText
+    ? `\n\nYour worker type "${type}" (how you behave):\n${typeText}`
+    : `\n\nYour worker type is "${type}" (no description file found in ./worker-types/).`;
+  s += `\n\nYour space: ${space}\nKeep the files you produce (documents, notes, outputs, downloads) here.`;
+  if (missionText) s += `\n\nYour mission (mission.md):\n${missionText}`;
+  const skills = listSkills();
+  if (skills.length) {
+    s += `\n\nSaved skills (call read_skill to load one, then follow its steps):\n${skills
+      .map((x) => `- ${x.name}: ${x.description}`)
+      .join('\n')}`;
+  }
+  if (isSub) {
+    s += `\n\nYou are a sub-agent, working autonomously on ONE mission.`;
+    if (context) s += `\n\nContext from your parent:\n${context}`;
+    if (deliverables) s += `\n\nDeliverables your parent needs:\n${deliverables}`;
+    s += `\n\nWhen you finish, write report.json in your space with { summary, findings:[..], sources:[{title,url}], artifacts:[..], children:[..] }, write a readable report.md, then reply with a concise summary. If part of the mission needs deeper work you may call spawn_subagent (subject to limits) and include its digest under children[].`;
+  }
+  return s;
+}
 
-const SPACE_SECTION = `\n\nYour space: ${spacePath}
-Keep the files you produce (documents, notes, outputs, downloads) here.`;
-const MISSION_SECTION = mission ? `\n\nYour mission (spaces/${agentName}/mission.md):\n${mission}` : '';
-
-const skillList = listSkills();
-const SKILLS_SECTION = skillList.length
-  ? `\n\nSaved skills (call read_skill to load one, then follow its steps):\n${skillList
-      .map((s) => `- ${s.name}: ${s.description}`)
-      .join('\n')}`
-  : '';
-const SYSTEM = SYSTEM_BASE + TYPE_SECTION + SPACE_SECTION + MISSION_SECTION + SKILLS_SECTION;
+const SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const ask = (q) => new Promise((r) => rl.question(q, (a) => r(a)));
@@ -77,12 +88,33 @@ async function confirmCreate(action, code) {
   return a === 'y' || a === 'yes';
 }
 
-function onTool(kind, name, data) {
-  if (kind === 'call') console.log(dim(`  → ${name} ${Object.keys(data).length ? JSON.stringify(data) : ''}`));
-  else {
-    const s = JSON.stringify(data);
-    console.log(dim(`  ← ${name} ${s.length > 220 ? s.slice(0, 220) + '…' : s}`));
-  }
+function makeOnTool(depth = 0) {
+  const pad = '  '.repeat(depth);
+  return (kind, name, data) => {
+    if (kind === 'call') console.log(dim(`${pad}  → ${name} ${Object.keys(data).length ? JSON.stringify(data) : ''}`));
+    else {
+      const s = JSON.stringify(data);
+      console.log(dim(`${pad}  ← ${name} ${s.length > 180 ? s.slice(0, 180) + '…' : s}`));
+    }
+  };
+}
+const onTool = makeOnTool(0);
+
+function slugify(s) {
+  return (
+    String(s || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40) || 'task'
+  );
+}
+
+function uniqueChildDir(parentSpace, base) {
+  let name = base;
+  let n = 2;
+  while (existsSync(resolve(parentSpace, 'subagents', name))) name = `${base}-${n++}`;
+  return name;
 }
 
 function spawnAgentTerminal(name, type) {
@@ -120,7 +152,8 @@ function help() {
   console.log(dim('  /mission [t]  show or set this space\'s mission.md'));
   console.log(dim('  /reset        reset this conversation'));
   console.log(dim('  /shots        open the latest screenshot'));
-  console.log(dim('  /help /exit'));
+  console.log(dim(`  /help /exit`));
+  if (allowSpawn) console.log(dim(`  (sub-agents: spawn_subagent is available; depth<=${maxDepth}, agents<=${maxAgents})`));
 }
 
 async function main() {
@@ -130,8 +163,100 @@ async function main() {
   const prompt = pi >= 0 ? argv.slice(pi + 1).join(' ') : argv.filter((a) => a !== '--once').join(' ').trim();
 
   const host = await createBrowserHost({ headless, isolate });
-  const tools = await createTools({ host, agentId: agentName, textLimit });
+
+  // --- sub-agent spawner -------------------------------------------------
+  const budget = { agents: 0 };
+  function makeDelegate({ parentSpace, depth }) {
+    return async function delegate(args) {
+      if (!allowSpawn) return { declined: true, reason: 'spawning disabled (set MINIDOT_ALLOW_SPAWN=true)' };
+      if (depth >= maxDepth) return { declined: true, reason: `max depth ${maxDepth} reached` };
+      if (budget.agents >= maxAgents) return { declined: true, reason: `max agents ${maxAgents} reached` };
+
+      const childName = uniqueChildDir(parentSpace, slugify(args.name || args.mission));
+      const childSpace = resolve(parentSpace, 'subagents', childName);
+      mkdirSync(resolve(childSpace, 'shots'), { recursive: true });
+      writeFileSync(resolve(childSpace, 'mission.md'), `${String(args.mission || '').trim()}\n`);
+      const childType = String(args.type || 'default').trim();
+      writeFileSync(resolve(childSpace, 'worker_type'), `${childType}\n`);
+      budget.agents++;
+      console.log(
+        dim(`${'  '.repeat(depth)}  ⤷ spawn ${childName} [${childType}] (agents ${budget.agents}/${maxAgents}, depth ${depth + 1}/${maxDepth})`),
+      );
+
+      const childTools = await createTools({
+        host,
+        agentId: childName,
+        textLimit,
+        space: childSpace,
+        delegate: makeDelegate({ parentSpace: childSpace, depth: depth + 1 }),
+      });
+      const childMessages = [
+        {
+          role: 'system',
+          content: buildSystem({
+            space: childSpace,
+            type: childType,
+            mission: args.mission,
+            context: args.context,
+            deliverables: args.deliverables,
+            isSub: true,
+          }),
+        },
+        { role: 'user', content: 'Complete your mission and report back.' },
+      ];
+
+      let status = 'done';
+      try {
+        await runAgent({ messages: childMessages, tools: childTools, model, apiKey, baseUrl, textLimit, maxSteps, onTool: makeOnTool(depth + 1) });
+      } catch {
+        status = 'failed';
+      }
+
+      let report = null;
+      try {
+        report = JSON.parse(readFileSync(resolve(childSpace, 'report.json'), 'utf8'));
+      } catch {
+        /* none written */
+      }
+      const lastAssistant = [...childMessages].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string');
+      const rel = (p) => relative(process.cwd(), p).replace(/\\/g, '/');
+      const digest = {
+        child: childName,
+        space: rel(childSpace),
+        status,
+        mission: args.mission,
+        summary: report?.summary || lastAssistant?.content || '(no summary)',
+        findings: report?.findings || [],
+        sources: report?.sources || [],
+        artifacts: report?.artifacts || [],
+        report_path: existsSync(resolve(childSpace, 'report.md')) ? rel(resolve(childSpace, 'report.md')) : null,
+        children: report?.children || [],
+      };
+      console.log(dim(`${'  '.repeat(depth + 1)}└─ ${childName} [${status}]: ${String(digest.summary).slice(0, 120)}`));
+      return digest;
+    };
+  }
+
+  const tools = await createTools({
+    host,
+    agentId: agentName,
+    textLimit,
+    delegate: allowSpawn ? makeDelegate({ parentSpace: spacePath, depth: 0 }) : undefined,
+  });
   pruneScreenshots(Number(process.env.MINIDOT_SHOT_KEEP ?? 10) || 10, shotsDir(agentName));
+
+  // End-of-run cleanup: the sub-agent tree is scratch; results were folded up.
+  function cleanupSubagents() {
+    if (debug) {
+      console.log(dim(`(debug) keeping sub-agent spaces under spaces/${agentName}/subagents/`));
+      return;
+    }
+    try {
+      rmSync(resolve(spacePath, 'subagents'), { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  }
   let messages = [{ role: 'system', content: SYSTEM }];
 
   async function turn(p) {
@@ -165,6 +290,7 @@ async function main() {
       process.exit(1);
     }
     await turn(prompt);
+    cleanupSubagents();
     await host.close();
     stopSandboxWorker();
     rl.close();
@@ -173,7 +299,7 @@ async function main() {
 
   console.log(
     cyan('MiniDot') +
-      dim(` · agent="${agentName}" · type=${workerType} · space=spaces/${agentName} · model=${model} · browser=${headless ? 'headless' : 'headful'} shared via ${host.cdpUrl}`),
+      dim(` · agent="${agentName}" · type=${workerType} · space=spaces/${agentName} · model=${model} · browser=${headless ? 'headless' : 'headful'}${allowSpawn ? ` · spawn=on(${maxDepth}/${maxAgents})` : ''} shared via ${host.cdpUrl}`),
   );
   help();
   while (true) {
@@ -227,7 +353,7 @@ async function main() {
         console.log(readMission(agentName).trim() || dim('(no mission set)'));
       } else {
         const file = writeMission(agentName, text);
-        messages[0] = { role: 'system', content: `${SYSTEM}\n\nYour mission (spaces/${agentName}/mission.md):\n${text}` };
+        messages[0] = { role: 'system', content: buildSystem({ space: spacePath, type: workerType, mission: text }) };
         console.log(dim(`mission updated: ${file}`));
       }
       continue;
@@ -251,7 +377,7 @@ async function main() {
         setSpaceType(agentName, name);
         messages[0] = {
           role: 'system',
-          content: SYSTEM_BASE + `\n\nYour worker type "${name}" (how you behave):\n${text}` + SPACE_SECTION + MISSION_SECTION + SKILLS_SECTION,
+          content: buildSystem({ space: spacePath, type: name, mission: readMission(agentName).trim() }),
         };
         console.log(dim(`worker type set to "${name}"`));
       }
@@ -279,6 +405,7 @@ async function main() {
     }
     await turn(line);
   }
+  cleanupSubagents();
   await host.close();
   stopSandboxWorker();
   rl.close();

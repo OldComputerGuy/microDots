@@ -115,6 +115,19 @@ The core is portable — Node, Playwright, the model loop, Parallel search and y
 - If running as **root**, Chromium needs `--no-sandbox` (MiniDot adds it automatically on Linux root; override with `MINIDOT_CHROMIUM_ARGS`).
 - For a real sandbox, use `bubblewrap` (`MINIDOT_SANDBOX_BWRAP=true`) or a container — Linux gives you proper namespaces, no WSL/interop hacks.
 
+## Sub-agents (opt-in)
+With `MINIDOT_ALLOW_SPAWN=true`, a worker gets a **`spawn_subagent({ mission, name?, type?, context?, deliverables? })`** tool: it designs a tight, specialized mission and a sub-agent runs it autonomously, then reports back.
+
+- **Nested spaces:** the child works in `<parent space>/subagents/<name>/` (siblings unique, auto-suffixed), so the filesystem mirrors the agent tree and names never clash.
+- **Results roll up:** each child returns a **recursive digest** — `{ child, space, status, summary, findings, sources, artifacts, report_path, children[] }` — and writes `report.md`/`report.json` in its space. The root ends up with the whole tree's findings.
+- **Caps (hard):** `MINIDOT_MAX_DEPTH` (default 2), `MINIDOT_MAX_AGENTS` (8, counted across the whole tree), and off by default. Over-limit spawns are denied without creating a folder.
+- **Cleanup:** the sub-agent tree is scratch — removed at the end of the run. **`MINIDOT_DEBUG=true` keeps it** (for inspecting the process).
+
+```
+spaces/main/subagents/node-lts/
+  mission.md  worker_type  report.md  report.json  shots/
+```
+
 ## Config (`.env`)
 | var | default | meaning |
 |---|---|---|
@@ -135,6 +148,10 @@ The core is portable — Node, Playwright, the model loop, Parallel search and y
 | `MINIDOT_WORKER_TYPES_DIR` | `worker-types` | folder for worker-type behaviour files |
 | `MINIDOT_WORKER_TYPE` | *(space)* | worker type for a new worker (else the space's, else `default`) |
 | `MINIDOT_APPROVE_CREATE_TOOL` | `true` | ask before saving a new tool (interactive) |
+| `MINIDOT_ALLOW_SPAWN` | `false` | enable the `spawn_subagent` tool |
+| `MINIDOT_MAX_DEPTH` | `2` | max sub-agent nesting depth |
+| `MINIDOT_MAX_AGENTS` | `8` | max agents per run (whole tree) |
+| `MINIDOT_DEBUG` | `false` | keep sub-agent spaces + verbose logs |
 | `PARALLEL_API_KEY` | — | optional; Parallel search key (anonymous free tier works without it) |
 | `MINIDOT_TOOL_SANDBOX` | `none` | anything else = run tools in the isolated Linux worker (WSL on Windows, native on Linux) |
 | `MINIDOT_SANDBOX_DIR` | — | advanced: explicit sandbox root; overrides `spaces/<worker>` |

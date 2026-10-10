@@ -318,15 +318,36 @@ const BUILTINS = [
   },
 ];
 
-const BUILTIN_NAMES = new Set(BUILTINS.map((t) => t.function.name));
+const SPAWN_DEF = {
+  type: 'function',
+  function: {
+    name: 'spawn_subagent',
+    description:
+      'Spawn a specialized sub-agent to complete one focused mission, then return its findings. Design the mission tightly — specific goal, constraints and expected deliverables — because the sub-agent works autonomously and only reports back. Its space is created under your own (subagents/<name>/). Subject to depth/agent limits.',
+    parameters: {
+      type: 'object',
+      properties: {
+        mission: { type: 'string', description: 'The specialized mission (specific and self-contained)' },
+        name: { type: 'string', description: 'Optional short name for the child (else derived from the mission)' },
+        type: { type: 'string', description: 'Optional worker type (defaults to "default")' },
+        context: { type: 'string', description: 'Findings/URLs/constraints to seed the child with' },
+        deliverables: { type: 'string', description: 'Exactly what you want back (fields/format)' },
+      },
+      required: ['mission'],
+      additionalProperties: false,
+    },
+  },
+};
 
-export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
+const BUILTIN_NAMES = new Set([...BUILTINS.map((t) => t.function.name), 'spawn_subagent']);
+
+export async function createTools({ host, agentId, textLimit = 32768, space, delegate } = {}) {
   const clip = (s) => (typeof s === 'string' ? s.slice(0, textLimit) : '');
   const page = () => host.getPage();
   const dir = customDir();
   const sandbox = (process.env.MINIDOT_TOOL_SANDBOX ?? 'none').toLowerCase();
   const useSandbox = sandbox !== 'none';
-  const root = spaceDir(agentId);
+  const root = space ? resolve(space) : spaceDir(agentId);
   mkdirSync(root, { recursive: true });
   const backendName = (code) => (useSandbox && code ? (process.platform === 'win32' ? 'wsl' : 'sandbox') : 'in-process');
 
@@ -334,7 +355,7 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
   const custom = await loadCustomTools(dir);
 
   // Live tool list handed to the model; mutated when new tools are created.
-  const definitions = [...BUILTINS, ...[...custom.values()].map((t) => t.definition)];
+  const definitions = [...BUILTINS, ...(delegate ? [SPAWN_DEF] : []), ...[...custom.values()].map((t) => t.definition)];
 
   const ctx = {
     agentId,
@@ -435,6 +456,10 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
     }
 
     switch (name) {
+      case 'spawn_subagent': {
+        if (!delegate) throw new Error('spawning is disabled');
+        return await delegate(args);
+      }
       case 'web_search': {
         const results = await parallelSearch({ query: args.query, objective: args.objective });
         return { query: args.query, count: results.length, results };
