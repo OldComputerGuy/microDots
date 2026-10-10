@@ -8,7 +8,6 @@ npm-debug.log*
 # Runtime artifacts (generated)
 screenshots/
 .chromium-profile/
-tools-custom/
 workspace/
 
 # Scratch images dropped at the repo root by earlier runs
