@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+
+# Local secrets / config
+.env
+
+# Runtime artifacts (generated)
+screenshots/
+.chromium-profile/
+tools-custom/
+workspace/
+
+# Scratch images dropped at the repo root by earlier runs
+/bird.jpg
+/rolf_harris.jpg
