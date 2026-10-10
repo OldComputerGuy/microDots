@@ -16,6 +16,7 @@ import {
 import { runSandboxedTool, sandboxToHostPath } from './tool-sandbox.mjs';
 import { parallelSearch, parallelFetch } from './parallel.mjs';
 import { listSkills, readSkill, saveSkill, deleteSkill } from './skills.mjs';
+import { spaceDir, shotsDir } from './space.mjs';
 
 export function openPath(file) {
   try {
@@ -27,9 +28,8 @@ export function openPath(file) {
   }
 }
 
-// Keep only the newest `keep` screenshots; delete the rest.
-export function pruneScreenshots(keep = 10) {
-  const dir = resolve(process.cwd(), 'screenshots');
+// Keep only the newest `keep` screenshots in a folder; delete the rest.
+export function pruneScreenshots(keep = 10, dir = shotsDir()) {
   try {
     const files = readdirSync(dir)
       .filter((f) => f.toLowerCase().endsWith('.jpg'))
@@ -273,8 +273,8 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
   const dir = customDir();
   const sandbox = (process.env.MINIDOT_TOOL_SANDBOX ?? 'none').toLowerCase();
   const useSandbox = sandbox !== 'none';
-  const root = resolve(process.cwd(), process.env.MINIDOT_SANDBOX_DIR ?? 'workspace');
-  if (useSandbox) mkdirSync(root, { recursive: true });
+  const root = spaceDir(agentId);
+  mkdirSync(root, { recursive: true });
   const backendName = (code) => (useSandbox && code ? (process.platform === 'win32' ? 'wsl' : 'sandbox') : 'in-process');
 
   // Custom tools already on disk (name -> { definition, run, code }).
@@ -451,7 +451,7 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
       }
       case 'browser_screenshot': {
         const p = await page();
-        const sdir = resolve(process.cwd(), 'screenshots');
+        const sdir = shotsDir(agentId);
         mkdirSync(sdir, { recursive: true });
         const file = resolve(sdir, `shot-${agentId}-${Date.now()}.jpg`);
         const quality = Math.min(100, Math.max(1, Number(process.env.MINIDOT_SHOT_QUALITY ?? 80)));
@@ -459,7 +459,7 @@ export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
         const buf = await p.screenshot({ type: 'jpeg', quality, fullPage });
         writeFileSync(file, buf);
         const keep = Number(process.env.MINIDOT_SHOT_KEEP ?? 10);
-        pruneScreenshots(Number.isFinite(keep) ? keep : 10);
+        pruneScreenshots(Number.isFinite(keep) ? keep : 10, sdir);
         const open = (process.env.MINIDOT_OPEN_SHOTS ?? 'true') !== 'false';
         if (open) openPath(file);
         return {

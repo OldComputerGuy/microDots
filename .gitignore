@@ -9,6 +9,7 @@ npm-debug.log*
 screenshots/
 .chromium-profile/
 workspace/
+spaces/
 
 # Scratch images dropped at the repo root by earlier runs
 /bird.jpg

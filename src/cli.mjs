@@ -10,6 +10,7 @@ import { runAgent } from './agent.mjs';
 import { createMarkdownStream } from './markdown.mjs';
 import { stopSandboxWorker } from './tool-sandbox.mjs';
 import { listSkills } from './skills.mjs';
+import { ensureSpace, readMission, writeMission, shotsDir } from './space.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -34,13 +35,20 @@ const SYSTEM_BASE = `You are MiniDot, a small autonomous agent with your own bro
 - Always report what you actually observed. Never invent page content.
 - When your task is complete, answer the user directly in a short summary.`;
 
+// Each worker has its own space: spaces/<worker_name>/ (mission.md + files).
+const spacePath = ensureSpace(agentName);
+const mission = readMission(agentName).trim();
+const SPACE_SECTION = `\n\nYour space: ${spacePath}
+Keep the files you produce (documents, notes, outputs, downloads) here.`;
+const MISSION_SECTION = mission ? `\n\nYour mission (spaces/${agentName}/mission.md):\n${mission}` : '';
+
 const skillList = listSkills();
 const SKILLS_SECTION = skillList.length
   ? `\n\nSaved skills (call read_skill to load one, then follow its steps):\n${skillList
       .map((s) => `- ${s.name}: ${s.description}`)
       .join('\n')}`
   : '';
-const SYSTEM = SYSTEM_BASE + SKILLS_SECTION;
+const SYSTEM = SYSTEM_BASE + SPACE_SECTION + MISSION_SECTION + SKILLS_SECTION;
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const ask = (q) => new Promise((r) => rl.question(q, (a) => r(a)));
@@ -95,6 +103,7 @@ function help() {
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
+  console.log(dim('  /mission [t]  show or set this space\'s mission.md'));
   console.log(dim('  /reset        reset this conversation'));
   console.log(dim('  /shots        open the latest screenshot'));
   console.log(dim('  /help /exit'));
@@ -108,7 +117,7 @@ async function main() {
 
   const host = await createBrowserHost({ headless, isolate });
   const tools = await createTools({ host, agentId: agentName, textLimit });
-  pruneScreenshots(Number(process.env.MINIDOT_SHOT_KEEP ?? 10) || 10);
+  pruneScreenshots(Number(process.env.MINIDOT_SHOT_KEEP ?? 10) || 10, shotsDir(agentName));
   let messages = [{ role: 'system', content: SYSTEM }];
 
   async function turn(p) {
@@ -148,7 +157,10 @@ async function main() {
     return;
   }
 
-  console.log(cyan('MiniDot') + dim(` · agent="${agentName}" · model=${model} · browser=${headless ? 'headless' : 'headful'} shared via ${host.cdpUrl}`));
+  console.log(
+    cyan('MiniDot') +
+      dim(` · agent="${agentName}" · space=spaces/${agentName} · model=${model} · browser=${headless ? 'headless' : 'headful'} shared via ${host.cdpUrl}`),
+  );
   help();
   while (true) {
     const line = (await ask(cyan(`\n${agentName}@you> `))).trim();
@@ -192,8 +204,20 @@ async function main() {
       else for (const s of skills) console.log(`  ${s.name}${dim(` — ${s.description}`)}`);
       continue;
     }
+    if (line === '/mission' || line.startsWith('/mission ')) {
+      const text = line.slice(8).trim();
+      if (!text) {
+        console.log(dim(`space: ${spacePath}`));
+        console.log(readMission(agentName).trim() || dim('(no mission set)'));
+      } else {
+        const file = writeMission(agentName, text);
+        messages[0] = { role: 'system', content: `${SYSTEM}\n\nYour mission (spaces/${agentName}/mission.md):\n${text}` };
+        console.log(dim(`mission updated: ${file}`));
+      }
+      continue;
+    }
     if (line === '/shots') {
-      const dir = resolve(process.cwd(), 'screenshots');
+      const dir = shotsDir(agentName);
       try {
         const files = readdirSync(dir).sort();
         if (!files.length) console.log(dim('no screenshots yet'));

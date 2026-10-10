@@ -32,9 +32,25 @@ Watch the tabs: set `MINIDOT_HEADLESS=false` in `.env` **before first launch** (
 | `/tools` | list built-in + custom tools, with descriptions and backend |
 | `/delete <name>` | delete a custom tool (and its file) |
 | `/skills` | list saved skills |
+| `/mission [text]` | show or set this space's `mission.md` |
 | `/reset` | reset this conversation |
 | `/shots` | open the latest screenshot |
 | `/help`, `/exit` | |
+
+## Spaces & missions
+Every worker gets its **own space**, named after it:
+
+```
+spaces/
+  <worker_name>/
+    mission.md      the Dot's standing objective (injected into the system prompt)
+    shots/          screenshots
+    <other files>   notes, documents, downloads the worker produces
+```
+
+- The space is also the **sandbox root**, so a tool's `ctx.fs` writes land in `spaces/<worker>/` — enforced, not convention.
+- `mission.md` is created on first run (seed it via `MINIDOT_MISSION`) and shown to the worker each session; edit it directly or with `/mission <text>`.
+- `/new alpha` makes a new worker with its own `spaces/alpha/`. Set `MINIDOT_SPACE=research` to point a worker at a specific (possibly shared) space.
 
 ## Web search
 MiniDot has a **`web_search`** tool backed by **Parallel** — the same provider OpenDots uses (`https://search.parallel.ai/mcp`). No API key is needed for light use; set `PARALLEL_API_KEY` for a higher authenticated tier.
@@ -73,10 +89,10 @@ Set `MINIDOT_TOOL_SANDBOX` to anything other than `none` to run self-authored to
 
 - **Windows:** the worker runs **inside WSL2** (spawned via `wsl.exe`). Requires Node in WSL: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
 - **Linux/VPS:** the worker runs **natively** — no WSL.
-- **Confinement (`MINIDOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` — the system is mounted **read-only** and only `./workspace` is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed (Windows/WSL: `wsl -- sudo apt-get install -y bubblewrap`; Linux: `apt install bubblewrap`). Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed. If `bubblewrap` is missing, MiniDot logs a warning and **falls back to the unconfined worker** — best-effort confinement, never a hard failure.
+- **Confinement (`MINIDOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` — the system is mounted **read-only** and only the worker's space is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed (Windows/WSL: `wsl -- sudo apt-get install -y bubblewrap`; Linux: `apt install bubblewrap`). Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed. If `bubblewrap` is missing, MiniDot logs a warning and **falls back to the unconfined worker** — best-effort confinement, never a hard failure.
 
 Either way:
-- `ctx.fs` is jailed to `./workspace` (or `MINIDOT_SANDBOX_DIR`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (the shared Chromium / OS viewer).
+- `ctx.fs` is jailed to the worker's space (`spaces/<worker>/`, or `MINIDOT_SANDBOX_DIR`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (the shared Chromium / OS viewer).
 - Tools get `ctx.browser.{open,text,url,screenshot,click,type,close}` + `ctx.fs` instead of the in-process `page()`/`host`/`import()`.
 
 > ⚠️ With `bwrap` on, the system is read-only and only the workspace is writable; without it, WSL mode is functional-but-loose (default user, interop, `/mnt/c`). Fully closing interop/reads needs a dedicated distro.
@@ -110,7 +126,9 @@ The core is portable — Node, Playwright, the model loop, Parallel search and y
 | `MINIDOT_APPROVE_CREATE_TOOL` | `true` | ask before saving a new tool (interactive) |
 | `PARALLEL_API_KEY` | — | optional; Parallel search key (anonymous free tier works without it) |
 | `MINIDOT_TOOL_SANDBOX` | `none` | anything else = run tools in the isolated Linux worker (WSL on Windows, native on Linux) |
-| `MINIDOT_SANDBOX_DIR` | `workspace` | folder tools may read/write in sandbox mode |
+| `MINIDOT_SANDBOX_DIR` | — | advanced: explicit sandbox root; overrides `spaces/<worker>` |
+| `MINIDOT_SPACE` | worker name | space to use (an agent can attach to a shared space) |
+| `MINIDOT_MISSION` | — | initial `mission.md` text if the file doesn't exist |
 | `MINIDOT_SANDBOX_BWRAP` | `false` | Linux: wrap the worker in `bubblewrap` (read-only root, only workspace writable) |
 | `MINIDOT_WSL_DISTRO` | `Ubuntu-24.04` | WSL distro to use (Windows) |
 | `MINIDOT_WSL_TIMEOUT_MS` | `60000` | per-call timeout (worker is killed on timeout) |
@@ -123,7 +141,7 @@ The core is portable — Node, Playwright, the model loop, Parallel search and y
 
 ## Notes
 - Assistant replies are rendered as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code blocks, links, rules).
-- Screenshots are written to `./screenshots/` (named per agent) at `MINIDOT_VIEWPORT` size (default 1600×1000).
+- Screenshots are written to `spaces/<worker>/shots/` (per worker) at `MINIDOT_VIEWPORT` size (default 1600×1000).
 - The shared Chromium uses a profile at `./.chromium-profile/`.
 - To stop the shared browser, close its window (headful) or end the `chrome`/`chrome.exe` process.
 - Completely independent of the OpenDots app.
