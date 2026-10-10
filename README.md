@@ -120,7 +120,7 @@ With `MINIDOT_ALLOW_SPAWN=true`, a worker gets **`spawn_subagent({ mission, name
 
 - **Nested spaces:** the child works in `<parent space>/subagents/<name>/` (siblings unique, auto-suffixed), so the filesystem mirrors the agent tree and names never clash.
 - **Results roll up:** each child returns a **recursive digest** — `{ child, space, status, summary, findings, sources, artifacts, report_path, children[] }` — and writes `report.md`/`report.json` in its space. The root ends up with the whole tree's findings.
-- **Caps (hard):** `MINIDOT_MAX_DEPTH` (default 2), `MINIDOT_MAX_AGENTS` (8, counted across the whole tree), `MINIDOT_MAX_CONCURRENT` (1), and off by default. Over-limit spawns are denied without creating a folder.
+- **Caps (hard):** `MINIDOT_MAX_DEPTH` (default 3), `MINIDOT_MAX_AGENTS` (16, counted across the whole tree), `MINIDOT_MAX_CONCURRENT` (8), and off by default. Over-limit spawns are denied without creating a folder.
 - **Cleanup:** the sub-agent tree is scratch — removed at the end of the run. **`MINIDOT_DEBUG=true` keeps it** (for inspecting the process).
 - **Per-agent tabs:** every agent — the root and each child — gets its **own tab** on the shared Chromium, opened when the agent starts and **closed when it finishes**. The sandbox browser bridge is **per-run**, so parallel children never fight over (or cross wires to) the wrong tab.
 
@@ -150,9 +150,9 @@ spaces/main/subagents/node-lts/
 | `MINIDOT_WORKER_TYPE` | *(space)* | worker type for a new worker (else the space's, else `default`) |
 | `MINIDOT_APPROVE_CREATE_TOOL` | `true` | ask before saving a new tool (interactive) |
 | `MINIDOT_ALLOW_SPAWN` | `false` | enable the `spawn_subagent` tool |
-| `MINIDOT_MAX_DEPTH` | `2` | max sub-agent nesting depth |
-| `MINIDOT_MAX_AGENTS` | `8` | max agents per run (whole tree) |
-| `MINIDOT_MAX_CONCURRENT` | `1` | max sub-agents running at once |
+| `MINIDOT_MAX_DEPTH` | `3` | max sub-agent nesting depth |
+| `MINIDOT_MAX_AGENTS` | `16` | max agents per run (whole tree) |
+| `MINIDOT_MAX_CONCURRENT` | `8` | max sub-agents running at once |
 | `MINIDOT_DEBUG` | `false` | keep sub-agent spaces + verbose logs |
 | `PARALLEL_API_KEY` | — | optional; Parallel search key (anonymous free tier works without it) |
 | `MINIDOT_TOOL_SANDBOX` | `none` | anything else = run tools in the isolated Linux worker (WSL on Windows, native on Linux) |

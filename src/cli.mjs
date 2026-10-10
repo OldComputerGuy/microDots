@@ -21,9 +21,9 @@ const isolate = (process.env.MINIDOT_ISOLATE_AGENTS ?? 'false') === 'true';
 const textLimit = Number(process.env.MINIDOT_TEXT_LIMIT ?? 32768);
 const maxSteps = Number(process.env.MINIDOT_MAX_STEPS ?? 12);
 const allowSpawn = (process.env.MINIDOT_ALLOW_SPAWN ?? 'false') === 'true';
-const maxDepth = Number(process.env.MINIDOT_MAX_DEPTH ?? 2);
-const maxAgents = Number(process.env.MINIDOT_MAX_AGENTS ?? 8);
-const maxConcurrent = Number(process.env.MINIDOT_MAX_CONCURRENT ?? 1);
+const maxDepth = Number(process.env.MINIDOT_MAX_DEPTH ?? 3);
+const maxAgents = Number(process.env.MINIDOT_MAX_AGENTS ?? 16);
+const maxConcurrent = Number(process.env.MINIDOT_MAX_CONCURRENT ?? 8);
 const debug = (process.env.MINIDOT_DEBUG ?? 'false') === 'true';
 const agentName = process.env.MINIDOT_AGENT || 'main';
 
