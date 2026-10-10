@@ -91,7 +91,6 @@ let worker = null;
 let ready = null;
 let readyResolve = null;
 let seq = 0;
-let hostHandler = null;
 let bwrapFailed = false;
 const runs = new Map(); // id -> { resolve, reject, log, timer }
 
@@ -170,7 +169,7 @@ function handleLine(line, onReady) {
   }
   if (msg.type === 'host') {
     Promise.resolve()
-      .then(() => hostHandler?.(msg.spec))
+      .then(() => runs.get(msg.runId)?.bridge?.(msg.spec))
       .then(
         (value) => sendHost({ hid: msg.hid, ok: true, value: value ?? null }),
         (e) => sendHost({ hid: msg.hid, ok: false, error: String(e?.message ?? e) }),
@@ -197,7 +196,6 @@ function sendHost(obj) {
 
 export async function runSandboxedTool({ code, args, root, agentId, bridge, log, textLimit, timeoutMs } = {}) {
   await ensureWorker();
-  hostHandler = bridge;
   const id = `r${++seq}`;
   const rootSandbox = hostToSandboxPath(root ?? spaceDir(process.env.MINIDOT_AGENT || 'main'));
   const tl = Number(timeoutMs ?? process.env.MINIDOT_WSL_TIMEOUT_MS ?? 60000);
@@ -212,7 +210,7 @@ export async function runSandboxedTool({ code, args, root, agentId, bridge, log,
             reject(new Error('tool timed out'));
           }, tl)
         : null;
-    runs.set(id, { resolve, reject, log, timer });
+    runs.set(id, { resolve, reject, log, timer, bridge });
     worker.stdin.write(`${JSON.stringify({ type: 'run', id, code, args, root: rootSandbox, agentId, textLimit })}\n`);
   });
 }

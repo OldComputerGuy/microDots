@@ -164,6 +164,7 @@ async function main() {
   const prompt = pi >= 0 ? argv.slice(pi + 1).join(' ') : argv.filter((a) => a !== '--once').join(' ').trim();
 
   const host = await createBrowserHost({ headless, isolate });
+  await host.getPage(); // this agent's tab exists from the start
 
   // --- sub-agent spawner -------------------------------------------------
   const budget = { agents: 0 };
@@ -188,8 +189,12 @@ async function main() {
         dim(`${'  '.repeat(depth)}  ⤷ spawn ${childName} [${childType}] (agents ${budget.agents}/${maxAgents}, depth ${depth + 1}/${maxDepth})${debug ? ` @${new Date(started).toISOString().slice(11, 23)}` : ''}`),
       );
 
+      // Each agent gets its OWN tab (its own CDP host) on the shared Chromium —
+      // created now, never changed, closed when the agent is done.
+      const childHost = await createBrowserHost({ headless, isolate });
+      await childHost.getPage();
       const childTools = await createTools({
-        host,
+        host: childHost,
         agentId: childName,
         textLimit,
         space: childSpace,
@@ -215,6 +220,9 @@ async function main() {
         await runAgent({ messages: childMessages, tools: childTools, model, apiKey, baseUrl, textLimit, maxSteps, onTool: makeOnTool(depth + 1) });
       } catch {
         status = 'failed';
+      } finally {
+        await childHost.closeTab().catch(() => {});
+        await childHost.close().catch(() => {});
       }
 
       let report = null;
@@ -314,6 +322,7 @@ async function main() {
     }
     await turn(prompt);
     cleanupSubagents();
+    await host.closeTab().catch(() => {});
     await host.close();
     stopSandboxWorker();
     rl.close();
@@ -429,6 +438,7 @@ async function main() {
     await turn(line);
   }
   cleanupSubagents();
+  await host.closeTab().catch(() => {});
   await host.close();
   stopSandboxWorker();
   rl.close();

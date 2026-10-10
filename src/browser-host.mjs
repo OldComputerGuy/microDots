@@ -1,5 +1,7 @@
-// Shared Chromium over CDP: one browser process for all MiniDot CLIs.
-// Each CLI process is one agent and works in its own tab.
+// Shared Chromium over CDP: exactly ONE browser process for everything.
+// createBrowserHost() never launches a second browser — it connects to the one
+// shared Chromium and opens this agent's tab. So: 1 Chromium · N CDP client
+// connections ("hosts") · 1 tab per agent.
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';

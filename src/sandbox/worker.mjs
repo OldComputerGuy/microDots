@@ -25,11 +25,11 @@ function send(obj) {
   process.stdout.write(SENTINEL + JSON.stringify(obj) + '\n');
 }
 
-function hostCall(spec) {
+function hostCall(runId, spec) {
   return new Promise((resolve, reject) => {
     const id = 'h' + ++hid;
     pending.set(id, { resolve, reject });
-    send({ type: 'host', hid: id, spec });
+    send({ type: 'host', hid: id, runId, spec });
   });
 }
 
@@ -152,20 +152,20 @@ async function run(msg) {
     root: j.root,
     fs: makeFs(j),
     browser: {
-      open: (url) => hostCall({ op: 'browser_open', url: String(url) }),
-      text: () => hostCall({ op: 'browser_text' }),
-      url: () => hostCall({ op: 'browser_url' }),
-      screenshot: () => hostCall({ op: 'browser_screenshot' }),
-      click: (s) => hostCall({ op: 'browser_click', selector: String(s) }),
-      type: (s, t) => hostCall({ op: 'browser_type', selector: String(s), text: String(t) }),
-      close: () => hostCall({ op: 'browser_close' }),
+      open: (url) => hostCall(id, { op: 'browser_open', url: String(url) }),
+      text: () => hostCall(id, { op: 'browser_text' }),
+      url: () => hostCall(id, { op: 'browser_url' }),
+      screenshot: () => hostCall(id, { op: 'browser_screenshot' }),
+      click: (s) => hostCall(id, { op: 'browser_click', selector: String(s) }),
+      type: (s, t) => hostCall(id, { op: 'browser_type', selector: String(s), text: String(t) }),
+      close: () => hostCall(id, { op: 'browser_close' }),
     },
     fetch: async (url, opts) => {
       const res = await fetch(String(url), { redirect: 'follow', ...(opts || {}) });
       const text = await res.text();
       return { status: res.status, url: res.url, text: stop(text) };
     },
-    openPath: (p) => hostCall({ op: 'openPath', path: String(p) }),
+    openPath: (p) => hostCall(id, { op: 'openPath', path: String(p) }),
     log: (...a) => send({ type: 'log', id, message: a.map(str).join(' ') }),
   };
 

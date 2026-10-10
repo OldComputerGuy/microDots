@@ -122,7 +122,7 @@ With `MINIDOT_ALLOW_SPAWN=true`, a worker gets **`spawn_subagent({ mission, name
 - **Results roll up:** each child returns a **recursive digest** — `{ child, space, status, summary, findings, sources, artifacts, report_path, children[] }` — and writes `report.md`/`report.json` in its space. The root ends up with the whole tree's findings.
 - **Caps (hard):** `MINIDOT_MAX_DEPTH` (default 2), `MINIDOT_MAX_AGENTS` (8, counted across the whole tree), `MINIDOT_MAX_CONCURRENT` (1), and off by default. Over-limit spawns are denied without creating a folder.
 - **Cleanup:** the sub-agent tree is scratch — removed at the end of the run. **`MINIDOT_DEBUG=true` keeps it** (for inspecting the process).
-- **Browser caution:** parallel children share one Chromium; prefer `web_search`/`web_fetch`/`ctx.fs` for fan-out, and keep browser-driving children serial.
+- **Per-agent tabs:** every agent — the root and each child — gets its **own tab** on the shared Chromium, opened when the agent starts and **closed when it finishes**. The sandbox browser bridge is **per-run**, so parallel children never fight over (or cross wires to) the wrong tab.
 
 ```
 spaces/main/subagents/node-lts/
