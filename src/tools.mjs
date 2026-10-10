@@ -9,6 +9,7 @@ import {
   validateName,
   checkCode,
   saveTool,
+  deleteTool,
   importTool,
   loadCustomTools,
 } from './custom-tools.mjs';
@@ -171,11 +172,32 @@ const BUILTINS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'list_tools',
+      description: 'List the tools available to you: the built-in tools and any custom tools you have created, with their descriptions.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'delete_tool',
+      description: 'Delete one of your custom tools (by name) and remove its file. Built-in tools cannot be deleted.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Name of the custom tool to delete' } },
+        required: ['name'],
+        additionalProperties: false,
+      },
+    },
+  },
 ];
 
 const BUILTIN_NAMES = new Set(BUILTINS.map((t) => t.function.name));
 
-export async function createTools({ host, agentId, textLimit = 8000 } = {}) {
+export async function createTools({ host, agentId, textLimit = 32768 } = {}) {
   const clip = (s) => (typeof s === 'string' ? s.slice(0, textLimit) : '');
   const page = () => host.getPage();
   const dir = customDir();
@@ -287,6 +309,32 @@ export async function createTools({ host, agentId, textLimit = 8000 } = {}) {
       }
       case 'create_tool':
         return await createTool(args);
+      case 'list_tools': {
+        return {
+          builtin: BUILTINS.map((t) => ({ name: t.function.name, description: t.function.description })),
+          custom: [...custom.values()].map((c) => ({
+            name: c.definition.function.name,
+            description: c.definition.function.description,
+            backend: sandbox === 'wsl' && c.code ? 'wsl' : 'in-process',
+          })),
+        };
+      }
+      case 'delete_tool': {
+        const name = String(args?.name ?? '').trim();
+        if (!custom.has(name)) {
+          throw new Error(
+            BUILTIN_NAMES.has(name)
+              ? `"${name}" is a built-in tool and cannot be deleted`
+              : `no custom tool named "${name}"`,
+          );
+        }
+        const entry = custom.get(name);
+        const i = definitions.indexOf(entry.definition);
+        if (i >= 0) definitions.splice(i, 1);
+        custom.delete(name);
+        const file = deleteTool(dir, name);
+        return { deleted: name, file };
+      }
       case 'http_get': {
         const res = await fetch(args.url, {
           headers: { 'User-Agent': 'Mozilla/5.0 (MiniDot)' },

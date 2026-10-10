@@ -15,7 +15,7 @@ const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1
 const model = process.env.MINIDOT_MODEL ?? 'deepseek/deepseek-v4.1-flash';
 const headless = (process.env.MINIDOT_HEADLESS ?? 'true') !== 'false';
 const isolate = (process.env.MINIDOT_ISOLATE_AGENTS ?? 'false') === 'true';
-const textLimit = Number(process.env.MINIDOT_TEXT_LIMIT ?? 8000);
+const textLimit = Number(process.env.MINIDOT_TEXT_LIMIT ?? 32768);
 const maxSteps = Number(process.env.MINIDOT_MAX_STEPS ?? 12);
 const agentName = process.env.MINIDOT_AGENT || 'main';
 

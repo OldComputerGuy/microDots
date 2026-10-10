@@ -64,7 +64,7 @@ export async function runAgent({
   model,
   apiKey,
   baseUrl,
-  textLimit = 8000,
+  textLimit = 32768,
   maxSteps = 12,
   onToken,
   onTool,

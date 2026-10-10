@@ -45,6 +45,7 @@ MiniDot can **write its own tools** and use them immediately.
 - Call **`create_tool`** with `name`, `description`, a JSON-Schema `parameters`, and the JS body of `async function run(args, ctx)`.
 - The tool is registered live (callable in the **same** turn) and saved to `./tools-custom/<name>.mjs`.
 - Saved tools **auto-load** at startup, so they persist across sessions.
+- Manage them with **`list_tools`** (built-ins + your custom tools) and **`delete_tool`** (removes the tool and its file).
 - `ctx` gives `page()` (your browser tab), `agentId`, `clip`, `textLimit`, `host`; you can also `await import('...')` Node modules and use global `fetch`.
 
 Example tool file `tools-custom/slugify.mjs`:
@@ -90,7 +91,7 @@ Set `MINIDOT_TOOL_SANDBOX=wsl` to run self-authored tools **inside your WSL2 dis
 | `MINIDOT_WSL_TIMEOUT_MS` | `60000` | per-call timeout (WSL worker is killed on timeout) |
 | `MINIDOT_AGENT` | `main` | agent name for this CLI window |
 | `MINIDOT_MAX_STEPS` | `12` | max tool-loop steps per turn |
-| `MINIDOT_TEXT_LIMIT` | `8000` | max characters returned from a page |
+| `MINIDOT_TEXT_LIMIT` | `32768` | max characters returned from a page |
 
 ## Notes
 - Assistant replies are rendered as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code blocks, links, rules).

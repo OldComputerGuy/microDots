@@ -3,7 +3,7 @@
 //   export const definition = { type:'function', function:{ name, description, parameters } };
 //   export async function run(args, ctx) { ... return <json>; }
 // The code runs in this Node process (full local privileges), so treat it as code.
-import { readdirSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readdirSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -57,6 +57,12 @@ export function saveTool(dir, spec) {
   mkdirSync(dir, { recursive: true });
   const file = toolFile(dir, spec.name);
   writeFileSync(file, sourceFor(spec));
+  return file;
+}
+
+export function deleteTool(dir, name) {
+  const file = toolFile(dir, name);
+  rmSync(file, { force: true });
   return file;
 }
 
