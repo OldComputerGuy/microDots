@@ -339,7 +339,39 @@ const SPAWN_DEF = {
   },
 };
 
-const BUILTIN_NAMES = new Set([...BUILTINS.map((t) => t.function.name), 'spawn_subagent']);
+const SPAWN_MANY_DEF = {
+  type: 'function',
+  function: {
+    name: 'spawn_subagents',
+    description:
+      'Spawn several specialized sub-agents to run in parallel (bounded), then return all their findings. Use for independent fan-out sub-tasks. Each task is { mission, name?, type?, context?, deliverables? }. Subject to depth/agent limits.',
+    parameters: {
+      type: 'object',
+      properties: {
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              mission: { type: 'string' },
+              name: { type: 'string' },
+              type: { type: 'string' },
+              context: { type: 'string' },
+              deliverables: { type: 'string' },
+            },
+            required: ['mission'],
+            additionalProperties: false,
+          },
+        },
+        concurrency: { type: 'integer', description: 'Max to run at once (defaults to MINIDOT_MAX_CONCURRENT)' },
+      },
+      required: ['tasks'],
+      additionalProperties: false,
+    },
+  },
+};
+
+const BUILTIN_NAMES = new Set([...BUILTINS.map((t) => t.function.name), 'spawn_subagent', 'spawn_subagents']);
 
 export async function createTools({ host, agentId, textLimit = 32768, space, delegate } = {}) {
   const clip = (s) => (typeof s === 'string' ? s.slice(0, textLimit) : '');
@@ -355,7 +387,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
   const custom = await loadCustomTools(dir);
 
   // Live tool list handed to the model; mutated when new tools are created.
-  const definitions = [...BUILTINS, ...(delegate ? [SPAWN_DEF] : []), ...[...custom.values()].map((t) => t.definition)];
+  const definitions = [...BUILTINS, ...(delegate ? [SPAWN_DEF, SPAWN_MANY_DEF] : []), ...[...custom.values()].map((t) => t.definition)];
 
   const ctx = {
     agentId,
@@ -459,6 +491,10 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
       case 'spawn_subagent': {
         if (!delegate) throw new Error('spawning is disabled');
         return await delegate(args);
+      }
+      case 'spawn_subagents': {
+        if (!delegate?.many) throw new Error('spawning is disabled');
+        return { children: await delegate.many(args.tasks, args.concurrency) };
       }
       case 'web_search': {
         const results = await parallelSearch({ query: args.query, objective: args.objective });

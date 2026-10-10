@@ -23,6 +23,7 @@ const maxSteps = Number(process.env.MINIDOT_MAX_STEPS ?? 12);
 const allowSpawn = (process.env.MINIDOT_ALLOW_SPAWN ?? 'false') === 'true';
 const maxDepth = Number(process.env.MINIDOT_MAX_DEPTH ?? 2);
 const maxAgents = Number(process.env.MINIDOT_MAX_AGENTS ?? 8);
+const maxConcurrent = Number(process.env.MINIDOT_MAX_CONCURRENT ?? 1);
 const debug = (process.env.MINIDOT_DEBUG ?? 'false') === 'true';
 const agentName = process.env.MINIDOT_AGENT || 'main';
 
@@ -166,21 +167,25 @@ async function main() {
 
   // --- sub-agent spawner -------------------------------------------------
   const budget = { agents: 0 };
+  const relPath = (p) => relative(process.cwd(), p).replace(/\\/g, '/');
+
   function makeDelegate({ parentSpace, depth }) {
-    return async function delegate(args) {
+    async function runChild(args) {
       if (!allowSpawn) return { declined: true, reason: 'spawning disabled (set MINIDOT_ALLOW_SPAWN=true)' };
       if (depth >= maxDepth) return { declined: true, reason: `max depth ${maxDepth} reached` };
       if (budget.agents >= maxAgents) return { declined: true, reason: `max agents ${maxAgents} reached` };
 
+      // reserve budget synchronously so parallel batches can't over-spend
       const childName = uniqueChildDir(parentSpace, slugify(args.name || args.mission));
       const childSpace = resolve(parentSpace, 'subagents', childName);
+      const childType = String(args.type || 'default').trim();
       mkdirSync(resolve(childSpace, 'shots'), { recursive: true });
       writeFileSync(resolve(childSpace, 'mission.md'), `${String(args.mission || '').trim()}\n`);
-      const childType = String(args.type || 'default').trim();
       writeFileSync(resolve(childSpace, 'worker_type'), `${childType}\n`);
       budget.agents++;
+      const started = Date.now();
       console.log(
-        dim(`${'  '.repeat(depth)}  ⤷ spawn ${childName} [${childType}] (agents ${budget.agents}/${maxAgents}, depth ${depth + 1}/${maxDepth})`),
+        dim(`${'  '.repeat(depth)}  ⤷ spawn ${childName} [${childType}] (agents ${budget.agents}/${maxAgents}, depth ${depth + 1}/${maxDepth})${debug ? ` @${new Date(started).toISOString().slice(11, 23)}` : ''}`),
       );
 
       const childTools = await createTools({
@@ -219,22 +224,40 @@ async function main() {
         /* none written */
       }
       const lastAssistant = [...childMessages].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string');
-      const rel = (p) => relative(process.cwd(), p).replace(/\\/g, '/');
       const digest = {
         child: childName,
-        space: rel(childSpace),
+        space: relPath(childSpace),
         status,
         mission: args.mission,
         summary: report?.summary || lastAssistant?.content || '(no summary)',
         findings: report?.findings || [],
         sources: report?.sources || [],
         artifacts: report?.artifacts || [],
-        report_path: existsSync(resolve(childSpace, 'report.md')) ? rel(resolve(childSpace, 'report.md')) : null,
+        report_path: existsSync(resolve(childSpace, 'report.md')) ? relPath(resolve(childSpace, 'report.md')) : null,
         children: report?.children || [],
       };
-      console.log(dim(`${'  '.repeat(depth + 1)}└─ ${childName} [${status}]: ${String(digest.summary).slice(0, 120)}`));
+      const ms = Date.now() - started;
+      console.log(dim(`${'  '.repeat(depth + 1)}└─ ${childName} [${status}] ${ms}ms: ${String(digest.summary).slice(0, 120)}`));
       return digest;
+    }
+
+    const delegate = (args) => runChild(args);
+    delegate.many = async (tasks, concurrency) => {
+      const list = Array.isArray(tasks) ? tasks : [];
+      if (!list.length) return [];
+      const limit = Math.max(1, Math.min(Number(concurrency) || maxConcurrent, maxConcurrent, list.length));
+      const results = new Array(list.length);
+      let next = 0;
+      async function worker() {
+        while (next < list.length) {
+          const i = next++;
+          results[i] = await runChild(list[i]);
+        }
+      }
+      await Promise.all(Array.from({ length: limit }, () => worker()));
+      return results;
     };
+    return delegate;
   }
 
   const tools = await createTools({

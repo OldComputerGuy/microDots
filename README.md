@@ -116,12 +116,13 @@ The core is portable — Node, Playwright, the model loop, Parallel search and y
 - For a real sandbox, use `bubblewrap` (`MINIDOT_SANDBOX_BWRAP=true`) or a container — Linux gives you proper namespaces, no WSL/interop hacks.
 
 ## Sub-agents (opt-in)
-With `MINIDOT_ALLOW_SPAWN=true`, a worker gets a **`spawn_subagent({ mission, name?, type?, context?, deliverables? })`** tool: it designs a tight, specialized mission and a sub-agent runs it autonomously, then reports back.
+With `MINIDOT_ALLOW_SPAWN=true`, a worker gets **`spawn_subagent({ mission, name?, type?, context?, deliverables? })`** and **`spawn_subagents({ tasks, concurrency? })`**: it designs tight, specialized missions and sub-agents run them autonomously — one at a time, or several **in parallel** (bounded by `MINIDOT_MAX_CONCURRENT`) — then report back.
 
 - **Nested spaces:** the child works in `<parent space>/subagents/<name>/` (siblings unique, auto-suffixed), so the filesystem mirrors the agent tree and names never clash.
 - **Results roll up:** each child returns a **recursive digest** — `{ child, space, status, summary, findings, sources, artifacts, report_path, children[] }` — and writes `report.md`/`report.json` in its space. The root ends up with the whole tree's findings.
-- **Caps (hard):** `MINIDOT_MAX_DEPTH` (default 2), `MINIDOT_MAX_AGENTS` (8, counted across the whole tree), and off by default. Over-limit spawns are denied without creating a folder.
+- **Caps (hard):** `MINIDOT_MAX_DEPTH` (default 2), `MINIDOT_MAX_AGENTS` (8, counted across the whole tree), `MINIDOT_MAX_CONCURRENT` (1), and off by default. Over-limit spawns are denied without creating a folder.
 - **Cleanup:** the sub-agent tree is scratch — removed at the end of the run. **`MINIDOT_DEBUG=true` keeps it** (for inspecting the process).
+- **Browser caution:** parallel children share one Chromium; prefer `web_search`/`web_fetch`/`ctx.fs` for fan-out, and keep browser-driving children serial.
 
 ```
 spaces/main/subagents/node-lts/
@@ -151,6 +152,7 @@ spaces/main/subagents/node-lts/
 | `MINIDOT_ALLOW_SPAWN` | `false` | enable the `spawn_subagent` tool |
 | `MINIDOT_MAX_DEPTH` | `2` | max sub-agent nesting depth |
 | `MINIDOT_MAX_AGENTS` | `8` | max agents per run (whole tree) |
+| `MINIDOT_MAX_CONCURRENT` | `1` | max sub-agents running at once |
 | `MINIDOT_DEBUG` | `false` | keep sub-agent spaces + verbose logs |
 | `PARALLEL_API_KEY` | — | optional; Parallel search key (anonymous free tier works without it) |
 | `MINIDOT_TOOL_SANDBOX` | `none` | anything else = run tools in the isolated Linux worker (WSL on Windows, native on Linux) |
