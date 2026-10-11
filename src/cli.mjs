@@ -27,7 +27,7 @@ const textTokens = Number(process.env.MICRODOT_TEXT_TOKENS ?? 0);
 // Prefer a token budget when given; clip tool results to (tokens * chars/token).
 const textLimit = textTokens > 0 ? Math.round(textTokens * charsPerToken) : Number(process.env.MICRODOT_TEXT_LIMIT ?? 32768);
 const maxSteps = Number(process.env.MICRODOT_MAX_STEPS ?? 12);
-const allowSpawn = (process.env.MICRODOT_ALLOW_SPAWN ?? 'false') === 'true';
+const allowSpawn = (process.env.MICRODOT_ALLOW_SPAWN ?? 'true') !== 'false';
 const maxDepth = Number(process.env.MICRODOT_MAX_DEPTH ?? 3);
 const maxAgents = Number(process.env.MICRODOT_MAX_AGENTS ?? 16);
 const maxConcurrent = Number(process.env.MICRODOT_MAX_CONCURRENT ?? 8);
@@ -196,7 +196,7 @@ function help() {
   console.log(dim(`  /help /exit`));
   if (allowSpawn)
     console.log(dim(`  (sub-agents: spawn_subagent available — depth<=${maxDepth}, agents<=${maxAgents}, concurrency<=${maxConcurrent})`));
-  else console.log(dim('  (sub-agents: disabled — set MICRODOT_ALLOW_SPAWN=true to enable)'));
+  else console.log(dim('  (sub-agents: disabled - MICRODOT_ALLOW_SPAWN=false)'));
 }
 
 async function main() {
@@ -223,7 +223,7 @@ async function main() {
 
   function makeDelegate({ parentSpace, depth }) {
     async function runChild(args) {
-      if (!allowSpawn) return { declined: true, reason: 'spawning disabled (set MICRODOT_ALLOW_SPAWN=true)' };
+      if (!allowSpawn) return { declined: true, reason: 'spawning disabled (MICRODOT_ALLOW_SPAWN=false)' };
       if (depth >= maxDepth) return { declined: true, reason: `max depth ${maxDepth} reached` };
       if (budget.agents >= maxAgents) return { declined: true, reason: `max agents ${maxAgents} reached` };
 

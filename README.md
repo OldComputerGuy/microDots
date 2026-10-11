@@ -158,8 +158,8 @@ The core is portable — Node, Playwright, the model loop, Parallel search and y
 - If running as **root**, Chromium needs `--no-sandbox` (MicroDot adds it automatically on Linux root; override with `MICRODOT_CHROMIUM_ARGS`).
 - For a real sandbox, use `bubblewrap` (`MICRODOT_SANDBOX_BWRAP=true`) or a container — Linux gives you proper namespaces, no WSL/interop hacks.
 
-## Sub-agents (opt-in)
-With `MICRODOT_ALLOW_SPAWN=true`, a worker gets **`spawn_subagent({ mission, name?, type?, context?, deliverables? })`** and **`spawn_subagents({ tasks, concurrency? })`**: it designs tight, specialized missions and sub-agents run them autonomously — one at a time, or several **in parallel** (bounded by `MICRODOT_MAX_CONCURRENT`) — then report back.
+## Sub-agents
+Sub-agents are **on by default**. A worker gets **`spawn_subagent({ mission, name?, type?, context?, deliverables? })`** and **`spawn_subagents({ tasks, concurrency? })`**: it designs tight, specialized missions and sub-agents run them autonomously — one at a time, or several **in parallel** (bounded by `MICRODOT_MAX_CONCURRENT`) — then report back. Disable with `MICRODOT_ALLOW_SPAWN=false`.
 
 - **Nested spaces:** the child works in `<parent space>/subagents/<name>/` (siblings unique, auto-suffixed), so the filesystem mirrors the agent tree and names never clash.
 - **Results roll up:** each child returns a **recursive digest** — `{ child, space, status, summary, findings, sources, artifacts, report_path, children[] }` — and writes `report.md`/`report.json` in its space. The root ends up with the whole tree's findings.
@@ -219,7 +219,7 @@ An agent tidies up after itself:
 | `MICRODOT_WORKER_TYPES_DIR` | *(layered)* | explicit single dir for worker types (else engine + project) |
 | `MICRODOT_WORKER_TYPE` | *(space)* | worker type for a new worker (else the space's, else `default`) |
 | `MICRODOT_APPROVE_CREATE_TOOL` | `true` | ask before saving a tool whose code uses risky capabilities (child_process, require, direct fs/fetch, absolute paths, …) |
-| `MICRODOT_ALLOW_SPAWN` | `false` | enable the `spawn_subagent` tool |
+| `MICRODOT_ALLOW_SPAWN` | `true` | sub-agents enabled (set `false` to disable) |
 | `MICRODOT_MAX_DEPTH` | `3` | max sub-agent nesting depth |
 | `MICRODOT_MAX_AGENTS` | `16` | max agents per run (whole tree) |
 | `MICRODOT_MAX_CONCURRENT` | `8` | max sub-agents running at once |
