@@ -227,7 +227,7 @@ An agent tidies up after itself:
 
 ## Notes
 - Background actions are **quiet by default**: while the agent works it shows a KITT-style scanner (`─────o─────`, the `o` bouncing left↔right) with the current tool name, then clears it for the answer. Set `MICRODOT_VERBOSE=true` for the old per-tool `→`/`←` logging.
-- Assistant replies are rendered as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code blocks, links, rules).
+- Assistant replies are rendered as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code blocks, links, rules, and **aligned box tables**).
 - Screenshots are written to `spaces/<worker>/shots/` (per worker) at `MICRODOT_VIEWPORT` size (default 1600×1000).
 - The shared Chromium uses a profile at `<engine>/.chromium-profile/` and is started/stopped automatically (see Self-cleanup); if you ever need to, end the `chrome`/`chrome.exe` process.
 - Completely independent of the OpenDots app.

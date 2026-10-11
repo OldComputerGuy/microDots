@@ -1,6 +1,5 @@
 // Tiny streaming markdown → ANSI renderer for the terminal.
 // Line-buffered so it works with token streaming without flicker.
-const R = '\x1b[0m';
 const b = (s) => `\x1b[1m${s}\x1b[22m`;
 const i = (s) => `\x1b[3m${s}\x1b[23m`;
 const u = (s) => `\x1b[4m${s}\x1b[24m`;
@@ -11,6 +10,8 @@ const yel = (s) => `\x1b[33m${s}\x1b[39m`;
 const blu = (s) => `\x1b[34m${s}\x1b[39m`;
 const mag = (s) => `\x1b[35m${s}\x1b[39m`;
 const cyn = (s) => `\x1b[36m${s}\x1b[39m`;
+
+const stripAnsi = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, '');
 
 function inline(s) {
   let out = s;
@@ -28,10 +29,43 @@ function inline(s) {
 
 const headingFns = [mag, cyn, blu, grn, yel, red];
 
+// --- tables ---
+const looksTableRow = (line) => /^\s*\|/.test(line) || line.split('|').length >= 3;
+function splitRow(line) {
+  let s = line.trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|')) s = s.slice(0, -1);
+  return s.split('|').map((c) => c.trim());
+}
+const isSeparator = (line) => {
+  const cells = splitRow(line);
+  return cells.length > 0 && cells.every((c) => /^:?-{2,}:?$/.test(c));
+};
+
+// Render a header + rows as a boxed table, padding each column to its widest cell.
+function renderTable(header, body) {
+  const cols = Math.max(header.length, ...body.map((r) => r.length), 1);
+  const norm = (r) => Array.from({ length: cols }, (_, i) => String(r[i] ?? '').trim());
+  const rendered = [norm(header), ...body.map(norm)].map((cells) => cells.map((c) => inline(c)));
+  const widths = Array.from({ length: cols }, (_, i) => Math.max(1, ...rendered.map((r) => stripAnsi(r[i]).length)));
+  const pad = (s, w) => s + ' '.repeat(Math.max(0, w - stripAnsi(s).length));
+  const row = (cells) => '│ ' + cells.map((c, idx) => pad(c, widths[idx])).join(' │ ') + ' │';
+  const rule = (l, m, r) => l + widths.map((w) => '─'.repeat(w + 2)).join(m) + r;
+  return [
+    dim(rule('┌', '┬', '┐')),
+    row(rendered[0].map((c) => b(c))),
+    dim(rule('├', '┼', '┤')),
+    ...rendered.slice(1).map((cells) => row(cells)),
+    dim(rule('└', '┴', '┘')),
+  ].join('\n');
+}
+
 export function createMarkdownStream({ write }) {
   let buf = '';
   let inCode = false;
   let codeLang = '';
+  let inTable = false;
+  let tableRows = [];
 
   function renderLine(line) {
     const trimmed = line.trimStart();
@@ -80,19 +114,52 @@ export function createMarkdownStream({ write }) {
     write(inline(line) + '\n');
   }
 
+  // Buffer consecutive table-looking lines, then render (or print raw if it
+  // isn't actually a table — no separator row).
+  function flushTable() {
+    const rows = tableRows;
+    inTable = false;
+    tableRows = [];
+    if (rows.length >= 2 && isSeparator(rows[1])) {
+      const header = splitRow(rows[0]);
+      const body = rows.slice(2).map(splitRow).filter((r) => r.some((c) => c !== ''));
+      write(renderTable(header, body) + '\n');
+    } else {
+      for (const r of rows) renderLine(r);
+    }
+  }
+
+  function handleLine(line) {
+    if (inCode) {
+      renderLine(line);
+      return;
+    }
+    if (looksTableRow(line) && line.trim() !== '' && line.trim() !== '|') {
+      if (!inTable) {
+        inTable = true;
+        tableRows = [];
+      }
+      tableRows.push(line);
+      return;
+    }
+    if (inTable) flushTable();
+    renderLine(line);
+  }
+
   function push(chunk) {
     buf += chunk;
     let nl;
     while ((nl = buf.indexOf('\n')) >= 0) {
-      renderLine(buf.slice(0, nl));
+      handleLine(buf.slice(0, nl));
       buf = buf.slice(nl + 1);
     }
   }
   function flush() {
     if (buf) {
-      renderLine(buf);
+      handleLine(buf);
       buf = '';
     }
+    if (inTable) flushTable();
     if (inCode) {
       inCode = false;
       write(dim('└' + '─'.repeat(49)) + '\n');
@@ -102,6 +169,8 @@ export function createMarkdownStream({ write }) {
     buf = '';
     inCode = false;
     codeLang = '';
+    inTable = false;
+    tableRows = [];
   }
   return { push, flush, reset };
 }
