@@ -10,12 +10,12 @@ import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 export function spaceName(agentId = 'main') {
-  return (process.env.MINIDOT_SPACE || agentId || 'main').trim() || 'main';
+  return (process.env.MICRODOT_SPACE || agentId || 'main').trim() || 'main';
 }
 
-// MINIDOT_SANDBOX_DIR is an explicit override; otherwise spaces/<worker>.
+// MICRODOT_SANDBOX_DIR is an explicit override; otherwise spaces/<worker>.
 export function spaceDir(agentId = 'main') {
-  const override = (process.env.MINIDOT_SANDBOX_DIR || '').trim();
+  const override = (process.env.MICRODOT_SANDBOX_DIR || '').trim();
   if (override) return resolve(process.cwd(), override);
   return resolve(process.cwd(), 'spaces', spaceName(agentId));
 }
@@ -33,7 +33,7 @@ export function ensureSpace(agentId = 'main') {
   mkdirSync(shotsDir(agentId), { recursive: true });
   const file = missionPath(agentId);
   if (!existsSync(file)) {
-    const mission = (process.env.MINIDOT_MISSION || '').trim();
+    const mission = (process.env.MICRODOT_MISSION || '').trim();
     const body = mission || `# Mission\n\nNo mission set yet for space "${spaceName(agentId)}".\n`;
     writeFileSync(file, body.endsWith('\n') ? body : `${body}\n`);
   }

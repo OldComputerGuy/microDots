@@ -5,7 +5,7 @@ import { resolve, join } from 'node:path';
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
-export const skillsDir = () => resolve(process.cwd(), process.env.MINIDOT_SKILLS_DIR ?? 'skills');
+export const skillsDir = () => resolve(process.cwd(), process.env.MICRODOT_SKILLS_DIR ?? 'skills');
 const skillFile = (dir, name) => join(dir, `${name}.md`);
 
 export function listSkills(dir = skillsDir()) {

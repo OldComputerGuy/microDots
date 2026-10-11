@@ -1,4 +1,4 @@
-// MiniDot WSL tool worker.
+// MicroDot WSL tool worker.
 //
 // Runs INSIDE WSL (Linux) and executes one self-authored tool at a time.
 // The OS (WSL2 kernel + this process) is the sandbox boundary; the tool code

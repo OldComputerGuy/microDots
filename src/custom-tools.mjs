@@ -1,4 +1,4 @@
-// Custom tools: MiniDot can author new tools that it (and future sessions) can call.
+// Custom tools: MicroDot can author new tools that it (and future sessions) can call.
 // Each tool is a standalone ES module written to ./tools-custom/<name>.mjs:
 //   export const definition = { type:'function', function:{ name, description, parameters } };
 //   export async function run(args, ctx) { ... return <json>; }
@@ -9,7 +9,7 @@ import { pathToFileURL } from 'node:url';
 
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
-export const customDir = () => resolve(process.cwd(), process.env.MINIDOT_TOOLS_DIR ?? 'tools-custom');
+export const customDir = () => resolve(process.cwd(), process.env.MICRODOT_TOOLS_DIR ?? 'tools-custom');
 
 export function toolFile(dir, name) {
   return join(dir, `${name}.mjs`);
@@ -61,7 +61,7 @@ function normaliseParameters(parameters) {
 function sourceFor({ name, description, parameters, code }) {
   const definition = { type: 'function', function: { name, description, parameters } };
   return [
-    `// MiniDot custom tool "${name}" - auto-generated, safe to edit or delete.`,
+    `// MicroDot custom tool "${name}" - auto-generated, safe to edit or delete.`,
     `// run() is used by the in-process backend; code is shipped to the WSL sandbox.`,
     `export const definition = ${JSON.stringify(definition, null, 2)};`,
     `export const code = ${JSON.stringify(code)};`,
@@ -111,7 +111,7 @@ export async function loadCustomTools(dir = customDir()) {
       const { definition, run, code } = await importTool(dir, name);
       out.set(definition.function.name ?? name, { definition, run, code });
     } catch (e) {
-      console.error(`MiniDot: could not load custom tool ${f}: ${e?.message ?? e}`);
+      console.error(`MicroDot: could not load custom tool ${f}: ${e?.message ?? e}`);
     }
   }
   return out;

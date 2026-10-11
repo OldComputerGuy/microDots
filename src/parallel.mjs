@@ -1,4 +1,4 @@
-// Parallel web search + fetch for MiniDot (the same provider OpenDots uses).
+// Parallel web search + fetch for MicroDot (the same provider OpenDots uses).
 //
 // Talks to Parallel's anonymous Search MCP endpoint. No API key is required for
 // light use; set PARALLEL_API_KEY to use an authenticated (higher) tier.
@@ -38,7 +38,7 @@ function normalise(result) {
 
 async function callTool(name, args, timeoutMs) {
   const apiKey = (process.env.PARALLEL_API_KEY || '').trim() || undefined;
-  const client = new Client({ name: 'minidot', version: '0.1.0' });
+  const client = new Client({ name: 'microdot', version: '0.1.0' });
   const transport = new StreamableHTTPClientTransport(
     new URL(ENDPOINT),
     apiKey ? { requestInit: { headers: { Authorization: `Bearer ${apiKey}` } } } : undefined,

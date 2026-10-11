@@ -1,4 +1,4 @@
-// MiniDot CLI: one agent per process, all attached to one shared Chromium.
+// MicroDot CLI: one agent per process, all attached to one shared Chromium.
 // `/new` opens a new terminal (a new agent).
 import readline from 'node:readline';
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
@@ -15,28 +15,28 @@ import { listWorkerTypes, readWorkerType } from './worker-types.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
-const model = process.env.MINIDOT_MODEL ?? 'deepseek/deepseek-v4.1-flash';
-const headless = (process.env.MINIDOT_HEADLESS ?? 'true') !== 'false';
-const isolate = (process.env.MINIDOT_ISOLATE_AGENTS ?? 'false') === 'true';
-const charsPerToken = Number(process.env.MINIDOT_CHARS_PER_TOKEN ?? 4);
-const textTokens = Number(process.env.MINIDOT_TEXT_TOKENS ?? 0);
+const model = process.env.MICRODOT_MODEL ?? 'deepseek/deepseek-v4.1-flash';
+const headless = (process.env.MICRODOT_HEADLESS ?? 'true') !== 'false';
+const isolate = (process.env.MICRODOT_ISOLATE_AGENTS ?? 'false') === 'true';
+const charsPerToken = Number(process.env.MICRODOT_CHARS_PER_TOKEN ?? 4);
+const textTokens = Number(process.env.MICRODOT_TEXT_TOKENS ?? 0);
 // Prefer a token budget when given; clip tool results to (tokens * chars/token).
-const textLimit = textTokens > 0 ? Math.round(textTokens * charsPerToken) : Number(process.env.MINIDOT_TEXT_LIMIT ?? 32768);
-const maxSteps = Number(process.env.MINIDOT_MAX_STEPS ?? 12);
-const allowSpawn = (process.env.MINIDOT_ALLOW_SPAWN ?? 'false') === 'true';
-const maxDepth = Number(process.env.MINIDOT_MAX_DEPTH ?? 3);
-const maxAgents = Number(process.env.MINIDOT_MAX_AGENTS ?? 16);
-const maxConcurrent = Number(process.env.MINIDOT_MAX_CONCURRENT ?? 8);
-const debug = (process.env.MINIDOT_DEBUG ?? 'false') === 'true';
-const compactEnabled = (process.env.MINIDOT_COMPACT ?? 'false') === 'true';
-const contextTokens = Number(process.env.MINIDOT_CONTEXT_TOKENS ?? 24000);
-const keepRecent = Number(process.env.MINIDOT_KEEP_RECENT ?? 6);
-const offloadTokens = Number(process.env.MINIDOT_OFFLOAD_TOKENS ?? 4000);
-const summaryModel = process.env.MINIDOT_SUMMARY_MODEL || 'qwen/qwen3.6-flash';
-const agentName = process.env.MINIDOT_AGENT || 'main';
+const textLimit = textTokens > 0 ? Math.round(textTokens * charsPerToken) : Number(process.env.MICRODOT_TEXT_LIMIT ?? 32768);
+const maxSteps = Number(process.env.MICRODOT_MAX_STEPS ?? 12);
+const allowSpawn = (process.env.MICRODOT_ALLOW_SPAWN ?? 'false') === 'true';
+const maxDepth = Number(process.env.MICRODOT_MAX_DEPTH ?? 3);
+const maxAgents = Number(process.env.MICRODOT_MAX_AGENTS ?? 16);
+const maxConcurrent = Number(process.env.MICRODOT_MAX_CONCURRENT ?? 8);
+const debug = (process.env.MICRODOT_DEBUG ?? 'false') === 'true';
+const compactEnabled = (process.env.MICRODOT_COMPACT ?? 'false') === 'true';
+const contextTokens = Number(process.env.MICRODOT_CONTEXT_TOKENS ?? 24000);
+const keepRecent = Number(process.env.MICRODOT_KEEP_RECENT ?? 6);
+const offloadTokens = Number(process.env.MICRODOT_OFFLOAD_TOKENS ?? 4000);
+const summaryModel = process.env.MICRODOT_SUMMARY_MODEL || 'qwen/qwen3.6-flash';
+const agentName = process.env.MICRODOT_AGENT || 'main';
 
 if (!apiKey) {
-  console.error('MiniDot: missing OPENROUTER_API_KEY (or an OpenRouterKey env var).');
+  console.error('MicroDot: missing OPENROUTER_API_KEY (or an OpenRouterKey env var).');
   process.exit(1);
 }
 
@@ -44,7 +44,7 @@ const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
 const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
 
-const SYSTEM_BASE = `You are MiniDot, a small autonomous agent with your own browser tab in a shared Chromium. You have tools to fetch the web and to drive your tab. Be concise and factual.
+const SYSTEM_BASE = `You are MicroDot, a small autonomous agent with your own browser tab in a shared Chromium. You have tools to fetch the web and to drive your tab. Be concise and factual.
 - Prefer web_search for current information; use http_get for plain pages; use the browser for pages that need JavaScript or interaction.
 - Always report what you actually observed. Never invent page content.
 - When your task is complete, answer the user directly in a short summary.`;
@@ -53,7 +53,7 @@ const SYSTEM_BASE = `You are MiniDot, a small autonomous agent with your own bro
 const spacePath = ensureSpace(agentName);
 const mission = readMission(agentName).trim();
 
-let workerType = (process.env.MINIDOT_WORKER_TYPE || '').trim() || getSpaceType(agentName) || 'default';
+let workerType = (process.env.MICRODOT_WORKER_TYPE || '').trim() || getSpaceType(agentName) || 'default';
 setSpaceType(agentName, workerType);
 
 // Build the system prompt for a worker or sub-agent.
@@ -85,7 +85,7 @@ const SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const ask = (q) => new Promise((r) => rl.question(q, (a) => r(a)));
 
-// Approval for create_tool (skip with MINIDOT_APPROVE_CREATE_TOOL=false).
+// Approval for create_tool (skip with MICRODOT_APPROVE_CREATE_TOOL=false).
 async function confirmCreate(action, code) {
   if (!process.stdin.isTTY) {
     console.log(dim(`  (non-interactive) auto-approving ${action}`));
@@ -144,32 +144,32 @@ function uniqueChildDir(parentSpace, base) {
 
 function spawnAgentTerminal(name, type) {
   const env = { ...process.env };
-  env.MINIDOT_AGENT = name || `agent-${Date.now().toString(36)}`;
-  if (type) env.MINIDOT_WORKER_TYPE = type;
+  env.MICRODOT_AGENT = name || `agent-${Date.now().toString(36)}`;
+  if (type) env.MICRODOT_WORKER_TYPE = type;
   if (process.platform === 'win32') {
-    const bat = resolve(process.cwd(), 'minidot.bat');
+    const bat = resolve(process.cwd(), 'microdot.bat');
     const comspec = process.env.ComSpec || 'cmd.exe';
-    execFile(comspec, ['/c', 'start', 'MiniDot', 'cmd', '/k', `"${bat}"`], { cwd: process.cwd(), env });
+    execFile(comspec, ['/c', 'start', 'MicroDot', 'cmd', '/k', `"${bat}"`], { cwd: process.cwd(), env });
   } else {
     // Linux/VPS: prefer a new tmux window if we're inside tmux, else a terminal
     // emulator, else launch a detached background process (no window).
-    const sh = resolve(process.cwd(), 'minidot.sh');
+    const sh = resolve(process.cwd(), 'microdot.sh');
     const insideTmux = !!process.env.TMUX;
     if (insideTmux) {
-      execFile('tmux', ['new-window', `-n`, env.MINIDOT_AGENT, `MINIDOT_AGENT=${env.MINIDOT_AGENT} ${sh}`], { cwd: process.cwd() });
+      execFile('tmux', ['new-window', `-n`, env.MICRODOT_AGENT, `MICRODOT_AGENT=${env.MICRODOT_AGENT} ${sh}`], { cwd: process.cwd() });
     } else if (process.env.DISPLAY || process.env.WAYLAND_DISPLAY) {
-      const term = process.env.MINIDOT_TERMINAL || 'x-terminal-emulator';
-      execFile(term, ['-e', `MINIDOT_AGENT=${env.MINIDOT_AGENT} ${sh}`], { cwd: process.cwd(), env });
+      const term = process.env.MICRODOT_TERMINAL || 'x-terminal-emulator';
+      execFile(term, ['-e', `MICRODOT_AGENT=${env.MICRODOT_AGENT} ${sh}`], { cwd: process.cwd(), env });
     } else {
-      execFile('setsid', ['-f', 'env', `MINIDOT_AGENT=${env.MINIDOT_AGENT}`, sh], { cwd: process.cwd(), env, detached: true });
+      execFile('setsid', ['-f', 'env', `MICRODOT_AGENT=${env.MICRODOT_AGENT}`, sh], { cwd: process.cwd(), env, detached: true });
     }
   }
-  return env.MINIDOT_AGENT;
+  return env.MICRODOT_AGENT;
 }
 
 function help() {
   console.log(dim('commands:'));
-  console.log(dim('  /new [name] [type]   open a new MiniDot CLI (new worker + space)'));
+  console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
   console.log(dim('  /paste        paste a multi-line prompt (end with a line containing only ".")'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
@@ -181,7 +181,7 @@ function help() {
   console.log(dim(`  /help /exit`));
   if (allowSpawn)
     console.log(dim(`  (sub-agents: spawn_subagent available — depth<=${maxDepth}, agents<=${maxAgents}, concurrency<=${maxConcurrent})`));
-  else console.log(dim('  (sub-agents: disabled — set MINIDOT_ALLOW_SPAWN=true to enable)'));
+  else console.log(dim('  (sub-agents: disabled — set MICRODOT_ALLOW_SPAWN=true to enable)'));
 }
 
 async function main() {
@@ -205,7 +205,7 @@ async function main() {
 
   function makeDelegate({ parentSpace, depth }) {
     async function runChild(args) {
-      if (!allowSpawn) return { declined: true, reason: 'spawning disabled (set MINIDOT_ALLOW_SPAWN=true)' };
+      if (!allowSpawn) return { declined: true, reason: 'spawning disabled (set MICRODOT_ALLOW_SPAWN=true)' };
       if (depth >= maxDepth) return { declined: true, reason: `max depth ${maxDepth} reached` };
       if (budget.agents >= maxAgents) return { declined: true, reason: `max agents ${maxAgents} reached` };
 
@@ -307,7 +307,7 @@ async function main() {
     textLimit,
     delegate: allowSpawn ? makeDelegate({ parentSpace: spacePath, depth: 0 }) : undefined,
   });
-  pruneScreenshots(Number(process.env.MINIDOT_SHOT_KEEP ?? 10) || 10, shotsDir(agentName));
+  pruneScreenshots(Number(process.env.MICRODOT_SHOT_KEEP ?? 10) || 10, shotsDir(agentName));
 
   // End-of-run cleanup: the sub-agent tree is scratch; results were folded up.
   function cleanupSubagents() {
@@ -351,7 +351,7 @@ async function main() {
 
   if (once) {
     if (!prompt) {
-      console.error('usage: minidot --prompt "your task"');
+      console.error('usage: microdot --prompt "your task"');
       process.exit(1);
     }
     await turn(prompt);
@@ -364,7 +364,7 @@ async function main() {
   }
 
   console.log(
-    cyan('MiniDot') +
+    cyan('MicroDot') +
       dim(` · agent="${agentName}" · type=${workerType} · space=spaces/${agentName} · model=${model} · browser=${headless ? 'headless' : 'headful'}${allowSpawn ? ` · spawn=on(${maxDepth}/${maxAgents})` : ''} shared via ${host.cdpUrl}`),
   );
   help();
@@ -393,7 +393,7 @@ async function main() {
       const given = parts[0] || '';
       const type = parts[1] || 'default'; // no type stated -> default
       const spawned = spawnAgentTerminal(given, type);
-      console.log(dim(`opened a new MiniDot CLI window (agent "${spawned}", worker type "${type}") — shares the same Chromium`));
+      console.log(dim(`opened a new MicroDot CLI window (agent "${spawned}", worker type "${type}") — shares the same Chromium`));
       continue;
     }
     if (line === '/tools') {

@@ -7,15 +7,15 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const cdpUrl = () => process.env.MINIDOT_CDP_URL ?? 'http://127.0.0.1:9222';
+const cdpUrl = () => process.env.MICRODOT_CDP_URL ?? 'http://127.0.0.1:9222';
 
 // Large viewport by default so screenshots (and what the model sees) are legible.
 function envViewport() {
-  const m = /^(\d+)\s*x\s*(\d+)$/.exec((process.env.MINIDOT_VIEWPORT ?? '').trim());
+  const m = /^(\d+)\s*x\s*(\d+)$/.exec((process.env.MICRODOT_VIEWPORT ?? '').trim());
   return m ? { width: Number(m[1]), height: Number(m[2]) } : { width: 1600, height: 1000 };
 }
 const envScale = () => {
-  const n = Number(process.env.MINIDOT_SHOT_SCALE);
+  const n = Number(process.env.MICRODOT_SHOT_SCALE);
   return Number.isFinite(n) && n >= 1 ? n : 1;
 };
 
@@ -49,8 +49,8 @@ async function ensureSharedChromium(headless) {
   if (process.platform === 'linux' && typeof process.getuid === 'function' && process.getuid() === 0) {
     args.push('--no-sandbox');
   }
-  if (process.env.MINIDOT_CHROMIUM_ARGS) {
-    args.push(...process.env.MINIDOT_CHROMIUM_ARGS.split(/\s+/).filter(Boolean));
+  if (process.env.MICRODOT_CHROMIUM_ARGS) {
+    args.push(...process.env.MICRODOT_CHROMIUM_ARGS.split(/\s+/).filter(Boolean));
   }
   args.push('about:blank');
   const child = spawn(exe, args, { detached: true, stdio: 'ignore' });

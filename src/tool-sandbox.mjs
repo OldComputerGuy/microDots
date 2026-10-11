@@ -12,7 +12,7 @@ import { spaceDir } from './space.mjs';
 const SENTINEL = '@@MINIDOT@@';
 const IS_WIN = process.platform === 'win32';
 const IS_LINUX = process.platform === 'linux';
-const distro = () => process.env.MINIDOT_WSL_DISTRO || 'Ubuntu-24.04';
+const distro = () => process.env.MICRODOT_WSL_DISTRO || 'Ubuntu-24.04';
 const workerPath = () => resolve(process.cwd(), 'src/sandbox/worker.mjs');
 
 // Host path <-> sandbox (Linux) path. Identity on Linux; drive-letter mapping
@@ -46,7 +46,7 @@ function commandExists(cmd) {
 }
 
 function useBwrap() {
-  return ['1', 'true'].includes(String(process.env.MINIDOT_SANDBOX_BWRAP ?? '').toLowerCase()) && !bwrapFailed;
+  return ['1', 'true'].includes(String(process.env.MICRODOT_SANDBOX_BWRAP ?? '').toLowerCase()) && !bwrapFailed;
 }
 
 // bubblewrap args: whole system read-only, workspace writable, no shared pid/ipc/uts.
@@ -67,11 +67,11 @@ function bwrapArgs(workspace, cwd) {
 
 function workerCommand() {
   const worker = workerPath();
-  const node = process.env.MINIDOT_NODE || 'node';
+  const node = process.env.MICRODOT_NODE || 'node';
   if (IS_WIN) {
     const workerWsl = hostToSandboxPath(worker);
     if (useBwrap()) {
-      const space = spaceDir(process.env.MINIDOT_AGENT || 'main');
+      const space = spaceDir(process.env.MICRODOT_AGENT || 'main');
       mkdirSync(space, { recursive: true });
       const workspace = hostToSandboxPath(space);
       const cwd = hostToSandboxPath(process.cwd());
@@ -80,7 +80,7 @@ function workerCommand() {
     return { cmd: 'wsl.exe', bwrap: false, args: ['-d', distro(), '--exec', '/usr/bin/node', workerWsl] };
   }
   if (IS_LINUX && useBwrap() && commandExists('bwrap')) {
-    const workspace = spaceDir(process.env.MINIDOT_AGENT || 'main');
+    const workspace = spaceDir(process.env.MICRODOT_AGENT || 'main');
     mkdirSync(workspace, { recursive: true });
     return { cmd: 'bwrap', bwrap: true, args: [...bwrapArgs(workspace, process.cwd()), node, worker] };
   }
@@ -140,7 +140,7 @@ function startWorker() {
       bwrapFailed = true;
       process.stderr.write(
         '[sandbox] bubblewrap unavailable; falling back to the unconfined worker ' +
-          '(install it with `wsl -- sudo apt-get install -y bubblewrap`, or set MINIDOT_SANDBOX_BWRAP=false).\n',
+          '(install it with `wsl -- sudo apt-get install -y bubblewrap`, or set MICRODOT_SANDBOX_BWRAP=false).\n',
       );
       startWorker(); // readyResolve still points at the original promise
     }
@@ -197,8 +197,8 @@ function sendHost(obj) {
 export async function runSandboxedTool({ code, args, root, agentId, bridge, log, textLimit, timeoutMs } = {}) {
   await ensureWorker();
   const id = `r${++seq}`;
-  const rootSandbox = hostToSandboxPath(root ?? spaceDir(process.env.MINIDOT_AGENT || 'main'));
-  const tl = Number(timeoutMs ?? process.env.MINIDOT_WSL_TIMEOUT_MS ?? 60000);
+  const rootSandbox = hostToSandboxPath(root ?? spaceDir(process.env.MICRODOT_AGENT || 'main'));
+  const tl = Number(timeoutMs ?? process.env.MICRODOT_WSL_TIMEOUT_MS ?? 60000);
 
   return await new Promise((resolve, reject) => {
     const timer =

@@ -1,4 +1,4 @@
-// MiniDot custom tool "memory" - auto-generated, safe to edit or delete.
+// MicroDot custom tool "memory" - auto-generated, safe to edit or delete.
 // run() is used by the in-process backend; code is shipped to the WSL sandbox.
 export const definition = {
   "type": "function",

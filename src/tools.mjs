@@ -1,4 +1,4 @@
-// MiniDot tools for one agent: browser actions target the agent's own tab,
+// MicroDot tools for one agent: browser actions target the agent's own tab,
 // plain HTTP fetch, and self-authored custom tools.
 import { mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -364,7 +364,7 @@ const SPAWN_MANY_DEF = {
             additionalProperties: false,
           },
         },
-        concurrency: { type: 'integer', description: 'Max to run at once (defaults to MINIDOT_MAX_CONCURRENT)' },
+        concurrency: { type: 'integer', description: 'Max to run at once (defaults to MICRODOT_MAX_CONCURRENT)' },
       },
       required: ['tasks'],
       additionalProperties: false,
@@ -378,7 +378,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
   const clip = (s) => (typeof s === 'string' ? s.slice(0, textLimit) : '');
   const page = () => host.getPage();
   const dir = customDir();
-  const sandbox = (process.env.MINIDOT_TOOL_SANDBOX ?? 'none').toLowerCase();
+  const sandbox = (process.env.MICRODOT_TOOL_SANDBOX ?? 'none').toLowerCase();
   const useSandbox = sandbox !== 'none';
   const root = space ? resolve(space) : spaceDir(agentId);
   mkdirSync(root, { recursive: true });
@@ -436,7 +436,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
 
     // Pattern-gated approval: only ask when the code touches risky capabilities.
     const risks = scanToolCode(args.code);
-    if ((process.env.MINIDOT_APPROVE_CREATE_TOOL ?? 'true') !== 'false' && risks.length) {
+    if ((process.env.MICRODOT_APPROVE_CREATE_TOOL ?? 'true') !== 'false' && risks.length) {
       if (confirm) {
         const ok = await confirm(`create tool "${name}" — risky: ${risks.join(', ')}`, args.code);
         if (!ok) return { declined: true, name, note: 'The user declined to create this tool.' };
@@ -562,7 +562,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
       }
       case 'http_get': {
         const res = await fetch(args.url, {
-          headers: { 'User-Agent': 'Mozilla/5.0 (MiniDot)' },
+          headers: { 'User-Agent': 'Mozilla/5.0 (MicroDot)' },
           redirect: 'follow',
         });
         const body = await res.text();
@@ -584,13 +584,13 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
         const sdir = shotsDir(agentId);
         mkdirSync(sdir, { recursive: true });
         const file = resolve(sdir, `shot-${agentId}-${Date.now()}.jpg`);
-        const quality = Math.min(100, Math.max(1, Number(process.env.MINIDOT_SHOT_QUALITY ?? 80)));
-        const fullPage = (process.env.MINIDOT_SHOT_FULLPAGE ?? 'false') === 'true';
+        const quality = Math.min(100, Math.max(1, Number(process.env.MICRODOT_SHOT_QUALITY ?? 80)));
+        const fullPage = (process.env.MICRODOT_SHOT_FULLPAGE ?? 'false') === 'true';
         const buf = await p.screenshot({ type: 'jpeg', quality, fullPage });
         writeFileSync(file, buf);
-        const keep = Number(process.env.MINIDOT_SHOT_KEEP ?? 10);
+        const keep = Number(process.env.MICRODOT_SHOT_KEEP ?? 10);
         pruneScreenshots(Number.isFinite(keep) ? keep : 10, sdir);
-        const open = (process.env.MINIDOT_OPEN_SHOTS ?? 'true') !== 'false';
+        const open = (process.env.MICRODOT_OPEN_SHOTS ?? 'true') !== 'false';
         if (open) openPath(file);
         return {
           saved: file,

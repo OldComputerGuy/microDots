@@ -1,11 +1,11 @@
 {
-  "name": "minidot",
+  "name": "microdot",
   "version": "0.1.0",
   "private": true,
-  "description": "MiniDot - a bare-bones single agent with a CLI and a Playwright browser. No CopilotKit, no React, no server.",
+  "description": "MicroDot - a bare-bones single agent with a CLI and a Playwright browser. No CopilotKit, no React, no server.",
   "type": "module",
   "bin": {
-    "minidot": "src/cli.mjs"
+    "microdot": "src/cli.mjs"
   },
   "scripts": {
     "start": "node --env-file-if-exists=.env src/cli.mjs",

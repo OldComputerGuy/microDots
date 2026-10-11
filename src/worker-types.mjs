@@ -7,7 +7,7 @@ import { resolve, join } from 'node:path';
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
-export const workerTypesDir = () => resolve(process.cwd(), process.env.MINIDOT_WORKER_TYPES_DIR ?? 'worker-types');
+export const workerTypesDir = () => resolve(process.cwd(), process.env.MICRODOT_WORKER_TYPES_DIR ?? 'worker-types');
 const typeFile = (dir, name) => join(dir, `${name}.md`);
 
 export function listWorkerTypes(dir = workerTypesDir()) {

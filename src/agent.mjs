@@ -1,4 +1,4 @@
-// MiniDot agent: a single model + tool loop. No framework.
+// MicroDot agent: a single model + tool loop. No framework.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 

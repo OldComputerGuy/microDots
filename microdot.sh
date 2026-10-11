@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# MiniDot launcher (Linux / VPS). Mirror of minidot.bat.
+# MicroDot launcher (Linux / VPS). Mirror of microdot.bat.
 set -euo pipefail
 cd "$(dirname "$(readlink -f "$0")")"
 
@@ -10,11 +10,11 @@ if command -v fnm >/dev/null 2>&1; then
 fi
 
 if ! command -v node >/dev/null 2>&1; then
-  echo "[MiniDot] Node.js was not found. Install Node 20+ (e.g. fnm/nvm or apt)." >&2
+  echo "[MicroDot] Node.js was not found. Install Node 20+ (e.g. fnm/nvm or apt)." >&2
   exit 1
 fi
 
-echo "[MiniDot] Node: $(node --version)"
+echo "[MicroDot] Node: $(node --version)"
 
-# Pass any arguments through, e.g.  ./minidot.sh --prompt "open example.com"
+# Pass any arguments through, e.g.  ./microdot.sh --prompt "open example.com"
 exec node --env-file-if-exists=.env src/cli.mjs "$@"
