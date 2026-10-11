@@ -12,6 +12,7 @@ import { stopSandboxWorker } from './tool-sandbox.mjs';
 import { listSkills } from './skills.mjs';
 import { ensureSpace, readMission, writeMission, shotsDir, getSpaceType, setSpaceType } from './space.mjs';
 import { listWorkerTypes, readWorkerType } from './worker-types.mjs';
+import { newChatId, saveChat, listChats, loadChat } from './chats.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -174,6 +175,8 @@ function help() {
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
+  console.log(dim('  /resume [id]  list saved chats, or resume one'));
+  console.log(dim('  /name [t]     show or set this chat\'s title'));
   console.log(dim('  /type [name]  show or set this worker\'s type'));
   console.log(dim('  /mission [t]  show or set this space\'s mission.md'));
   console.log(dim('  /reset        reset this conversation'));
@@ -188,6 +191,8 @@ async function main() {
   const argv = process.argv.slice(2);
   const pi = argv.indexOf('--prompt');
   const pfi = argv.indexOf('--prompt-file');
+  const ri = argv.indexOf('--resume');
+  const resumeId = ri >= 0 ? argv[ri + 1] : null;
   const once = argv.includes('--once') || pi >= 0 || pfi >= 0;
   const prompt =
     pfi >= 0
@@ -321,7 +326,34 @@ async function main() {
       /* ignore */
     }
   }
+  // Conversation state (persisted so it can be resumed later).
+  const chat = { id: newChatId(), title: '', agent: agentName, type: workerType, space: `spaces/${agentName}`, model, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
+  function autosave() {
+    chat.messages = messages;
+    if (!chat.title) {
+      const firstUser = messages.find((m) => m.role === 'user' && typeof m.content === 'string');
+      if (firstUser) chat.title = firstUser.content.replace(/\s+/g, ' ').trim().slice(0, 60);
+    }
+    if (!chat.title) chat.title = `chat ${chat.id}`;
+    try {
+      saveChat(chat);
+    } catch {
+      /* ignore */
+    }
+  }
+
   let messages = [{ role: 'system', content: SYSTEM }];
+  if (resumeId) {
+    try {
+      const c = loadChat(resumeId);
+      chat.id = c.id;
+      chat.title = c.title || '';
+      messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
+      console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
+    } catch (e) {
+      console.error(yellow(`resume failed: ${e?.message ?? e}`));
+    }
+  }
 
   async function turn(p) {
     messages.push({ role: 'user', content: p });
@@ -347,6 +379,7 @@ async function main() {
     }
     md.flush();
     process.stdout.write('\n');
+    autosave();
   }
 
   if (once) {
@@ -355,6 +388,7 @@ async function main() {
       process.exit(1);
     }
     await turn(prompt);
+    autosave();
     cleanupSubagents();
     await host.closeTab().catch(() => {});
     await host.close();
@@ -365,7 +399,7 @@ async function main() {
 
   console.log(
     cyan('MicroDot') +
-      dim(` · agent="${agentName}" · type=${workerType} · space=spaces/${agentName} · model=${model} · browser=${headless ? 'headless' : 'headful'}${allowSpawn ? ` · spawn=on(${maxDepth}/${maxAgents})` : ''} shared via ${host.cdpUrl}`),
+      dim(` · agent="${agentName}" · type=${workerType} · space=spaces/${agentName} · chat=${chat.id} · model=${model} · browser=${headless ? 'headless' : 'headful'}${allowSpawn ? ` · spawn=on(${maxDepth}/${maxAgents})` : ''} shared via ${host.cdpUrl}`),
   );
   help();
   while (true) {
@@ -476,13 +510,54 @@ async function main() {
       }
       continue;
     }
+    if (line === '/resume' || line.startsWith('/resume ')) {
+      const arg = line.slice(7).trim();
+      if (!arg) {
+        const list = listChats();
+        if (!list.length) console.log(dim('no saved chats yet'));
+        else {
+          console.log(dim('saved chats (newest first):'));
+          for (const c of list.slice(0, 20)) {
+            console.log(`  ${c.id}  ${dim(`${new Date(c.updatedAt).toLocaleString()} · ${c.count} msgs · ${c.agent} · ${c.title || ''}`)}`);
+          }
+          console.log(dim('resume with: /resume <id>'));
+        }
+      } else {
+        try {
+          const c = loadChat(arg);
+          chat.id = c.id;
+          chat.title = c.title || '';
+          messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
+          console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
+        } catch (e) {
+          console.log(yellow(`  ${e?.message ?? e}`));
+        }
+      }
+      continue;
+    }
+    if (line === '/name' || line.startsWith('/name ')) {
+      const t = line.slice(5).trim();
+      if (t) {
+        chat.title = t;
+        autosave();
+        console.log(dim(`chat title: ${t}`));
+      } else {
+        console.log(dim(`chat: ${chat.title || '(auto)'} · id ${chat.id}`));
+      }
+      continue;
+    }
     if (line === '/reset') {
+      autosave();
+      chat.id = newChatId();
+      chat.title = '';
+      chat.createdAt = Date.now();
       messages = [{ role: 'system', content: SYSTEM }];
-      console.log(dim('conversation reset'));
+      console.log(dim('started a new conversation (previous chat saved — /resume to reopen)'));
       continue;
     }
     await turn(line);
   }
+  autosave();
   cleanupSubagents();
   await host.closeTab().catch(() => {});
   await host.close();

@@ -23,6 +23,7 @@ microdot.bat                      # Windows: interactive CLI (agent "main")
 ./microdot.sh                     # Linux/VPS: same
 microdot.bat --prompt "summarise https://example.com"
 microdot.bat --prompt-file task.md      # read a multi-line prompt from a file
+microdot.bat --resume <id>              # resume a saved chat (see /resume)
 ```
 Watch the tabs: set `MICRODOT_HEADLESS=false` in `.env` **before first launch** (the shared Chromium is headful once started).
 
@@ -34,6 +35,8 @@ Watch the tabs: set `MICRODOT_HEADLESS=false` in `.env` **before first launch** 
 | `/tools` | list built-in + custom tools, with descriptions and backend |
 | `/delete <name>` | delete a custom tool (and its file) |
 | `/skills` | list saved skills |
+| `/resume [id]` | list saved chats, or resume one by id/prefix/title |
+| `/name [title]` | show or set this chat's title |
 | `/type [name]` | show or set this worker's type |
 | `/mission [text]` | show or set this space's `mission.md` |
 | `/reset` | reset this conversation |
@@ -132,6 +135,15 @@ spaces/main/subagents/node-lts/
   mission.md  worker_type  report.md  report.json  shots/
 ```
 
+## Resuming chats
+Every conversation is saved to `./chats/<id>.json`, so you can pick it back up later.
+
+- **In the REPL:** `/resume` lists saved chats; `/resume <id>` (exact id, unique prefix, or title) loads one. `/name <title>` labels the current chat; `/reset` starts a new chat and saves the old one.
+- **On launch:** `microdot.bat --resume <id>`.
+- Chats are auto-titled from your first message and saved after each turn.
+
+Resuming restores the **dialogue**; the worker, space and type stay as launched (the system prompt is rebuilt for the current worker).
+
 ## Context compaction
 Long runs don't grow without bound. With `MICRODOT_COMPACT=true`:
 
@@ -156,6 +168,7 @@ Applies to the root agent **and every sub-agent**. Each compaction costs one ext
 | `MICRODOT_SHOT_FULLPAGE` | `false` | `true` = capture the whole page, not just the viewport |
 | `MICRODOT_SHOT_KEEP` | `10` | keep only the newest N screenshots; older ones are deleted |
 | `MICRODOT_TOOLS_DIR` | `tools-custom` | folder for self-authored tools |
+| `MICRODOT_CHATS_DIR` | `chats` | folder for saved conversations (resumable) |
 | `MICRODOT_SKILLS_DIR` | `skills` | folder for saved skills (recipes) |
 | `MICRODOT_WORKER_TYPES_DIR` | `worker-types` | folder for worker-type behaviour files |
 | `MICRODOT_WORKER_TYPE` | *(space)* | worker type for a new worker (else the space's, else `default`) |
