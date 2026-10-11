@@ -1,7 +1,13 @@
 # MicroDot
 
-A bare-bones multi-agent CLI where **each CLI window is its own agent** and all agents share **one Chromium**, each in its own tab.
-No CopilotKit, no React, no server, no Docker.
+**A Dot on a diet** — a bare-bones, **self-extending** agent built to run on small servers. No CopilotKit, no React, no server, no DB, no Docker.
+
+- **Builds its own tools** — `create_tool` writes new tools on the fly (`list_tools` / `delete_tool` to manage them); they run sandboxed.
+- **Delegates to itself** — `spawn_subagent` / `spawn_subagents` fan out into specialized sub-agents (recursively, in parallel), each with its own space, rolling results back up the tree under hard depth/agent caps.
+- **One process, one Chromium** — every agent gets its own **tab**; the browser starts on demand and stops when the last agent exits, so an idle server carries nothing.
+- **State is plain files** — chats, spaces, worker types, skills, tools. No services to run.
+
+Each CLI window is its own agent sharing that one Chromium.
 
 ## Architecture
 - The first MicroDot CLI **launches one Chromium** (persistent, headless or headful) exposing CDP.
