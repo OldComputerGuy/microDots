@@ -81,3 +81,9 @@ If that's your kind of thing:
 - Repo: <https://github.com/OldComputerGuy/microDots>
 - Start here: [`docs/guide.md`](../guide.md)
 - Roadmap and `good first issue`s welcome.
+
+## Thanks
+
+Much of MicroDot — the core refactor, the docs, and even this post — was built
+with **DeepSeek V4.1 Flash**, which is also the model MicroDot runs on by
+default. This would have taken a lot longer without it.

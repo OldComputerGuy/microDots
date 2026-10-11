@@ -70,6 +70,12 @@ await rt.close(); // stops the shared Chromium + worker when idle
 ```
 See [`examples/run-dot.mjs`](examples/run-dot.mjs). The CLI is a thin test harness over this same core.
 
+## Acknowledgements
+
+MicroDot was built with a lot of help from **DeepSeek V4.1 Flash** (the default
+model it runs on). The core refactor, the docs, and the launch prep in this repo
+would have taken considerably longer without it. Thank you.
+
 ## Docs
 - **[docs/guide.md](docs/guide.md)** — architecture, spaces & layers, tools, sub-agents, the sandbox, compaction, cleanup, and the full config reference.
 - **[ROADMAP.md](ROADMAP.md)** — where it's going; `good first issue`s are welcome.
