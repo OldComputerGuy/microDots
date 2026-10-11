@@ -116,6 +116,7 @@ async function summarizeChunk(chunk, prior, { model, fallbackModel, apiKey, base
           ],
           stream: false,
         }),
+        signal: AbortSignal.timeout(Number(process.env.MICRODOT_SUMMARY_TIMEOUT_MS ?? 30000)),
       });
       if (!res.ok) throw new Error(`summarize HTTP ${res.status}`);
       const j = await res.json();
@@ -133,18 +134,21 @@ async function compactMessages(messages, compact, cfg) {
   const sIdx = summaryIndex(messages);
   const prior = sIdx >= 0 ? messages[sIdx].content.slice(SUMMARY_PREFIX.length).trim() : '';
   const split = splitIndex(messages, compact.keepRecent);
-  if (split <= 1) return false;
+  if (split <= 1) return 'nothing';
   const chunk = messages.slice(1, split);
-  if (!chunk.length) return false;
+  if (!chunk.length) return 'nothing';
   const summary = await summarizeChunk(chunk, prior, {
     model: compact.summaryModel || cfg.model,
     fallbackModel: compact.fallbackModel || cfg.model,
     apiKey: cfg.apiKey,
     baseUrl: cfg.baseUrl,
   });
-  if (!summary) return false;
+  if (!summary) return 'floor';
+  // If the summary isn't smaller than what we remove, there's nothing to gain.
+  const removed = chunk.reduce((n, m) => n + messageChars(m), 0);
+  if (summary.length >= removed) return 'floor';
   messages.splice(1, split - 1, { role: 'system', content: `${SUMMARY_PREFIX}\n${summary}` });
-  return true;
+  return 'compacted';
 }
 
 function offloadToolResult(spaceDir, name, content) {
@@ -170,15 +174,23 @@ export async function runAgent({
   compact = {},
 }) {
   const cpt = compact.charsPerToken || 4;
+  let compactStop = false;
   for (let step = 0; step < maxSteps; step++) {
-    // Compact before the next model call if the context is over budget.
-    if (compact.enabled && compact.maxTokens && estTokens(messages, cpt) > compact.maxTokens) {
+    // Compact before the next model call if the context is over budget — but at
+    // most until we hit the floor (summary + kept-recent), then stop trying.
+    if (compact.enabled && compact.maxTokens && !compactStop && estTokens(messages, cpt) > compact.maxTokens) {
       try {
-        if (await compactMessages(messages, compact, { model, apiKey, baseUrl })) {
-          compact.onNote?.(`compacted context (~${estTokens(messages, cpt)} tokens now)`);
+        const r = await compactMessages(messages, compact, { model, apiKey, baseUrl });
+        if (r === 'compacted') {
+          const after = estTokens(messages, cpt);
+          compact.onNote?.(`compacted context (~${after} tokens now)`);
+          if (after > compact.maxTokens) compactStop = true; // floor reached
+        } else if (r === 'floor') {
+          compactStop = true; // nothing (more) to gain this run
         }
       } catch (e) {
         compact.onNote?.(`compaction failed: ${e?.message ?? e}`);
+        compactStop = true; // don't hammer a failing summarizer every step
       }
     }
 
