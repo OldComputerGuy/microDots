@@ -10,7 +10,3 @@ screenshots/
 .chromium-profile/
 workspace/
 spaces/
-
-# Scratch images dropped at the repo root by earlier runs
-/bird.jpg
-/rolf_harris.jpg
