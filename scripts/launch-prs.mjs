@@ -67,11 +67,13 @@ const dot = await rt.dot('launch', {
   mission: 'Propose correct awesome-list pull requests for MicroDot (proposals only).',
 });
 
-const TARGETS = `TARGETS (skip any whose format is unclear or that enforces a quality bar MicroDot clearly cannot meet — say why):
-1. Jenqyang/Awesome-AI-Agents — use the "Frameworks" section. Match the exact entry format there (entries end with a GitHub stars badge). Insert alphabetically: section:"Frameworks", sort:true.
-2. slavakurilyak/awesome-ai-agents — find the best agent/framework section; match its exact entry format.
-3. caramaschiHG/awesome-ai-agents-2026 — find the best section; match its exact format.
-4. steven2358/awesome-generative-ai — use "### Autonomous agents". Entries go at the BOTTOM of the category and end with the #opensource tag (section:"Autonomous agents", sort:false). Flag that they prefer projects with 1000+ followers, which MicroDot does not meet yet.`;
+const TARGETS = `TARGETS (for each, propose ONLY if MicroDot genuinely fits a section AND the entry format is clear; otherwise skip and say why):
+1. e2b-dev/awesome-ai-sdks — SDKs/frameworks/libraries for building agents. Find the best-fitting section and match its exact entry format.
+2. e2b-dev/awesome-ai-agents — NOTE: this uses a multi-line block format (## [Name](url) + Category/Description/Features/Links subsections); propose only if a single well-formed block can be built, otherwise skip.
+3. kyrolabs/awesome-langchain — the "Other LLM Frameworks" section; match its exact entry format.
+4. webfuse-com/awesome-autoresearch — autonomous/self-improving agents; propose only if a section genuinely fits.
+5. WenyuChiou/awesome-agentic-ai-zh — match its exact (trilingual) format.
+6. bradAGI/awesome-cli-coding-agents — CLI agent harnesses; MicroDot is a CLI agent but is NOT a coding agent, so propose only if the scope truly fits, else skip.`;
 
 const task = `Your job: propose pull requests that add MicroDot to curated "awesome" lists. You are proposing ONLY — github_submit_pr is forced to validate, so nothing is submitted.
 
