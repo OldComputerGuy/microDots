@@ -350,6 +350,17 @@ export function createGithubTools({ token, maxPullRequests = 6, planFile = null 
         }
         if (!ready) throw new Error('fork did not become available in time');
 
+        // Guard against fork NAME collisions: `me/<name>` might be a fork of a
+        // DIFFERENT upstream (GitHub won't create a second fork with the same
+        // name). Verify the parent before committing anything.
+        const forkMeta = await gh('GET', `/repos/${me}/${name}`);
+        const parent = (forkMeta.parent?.full_name || '').toLowerCase();
+        if (parent !== upstream.toLowerCase()) {
+          throw new Error(
+            `fork name collision: ${me}/${name} is a fork of ${forkMeta.parent?.full_name ?? '(not a fork)'}, not ${upstream}. Rename it on GitHub to free the name, then retry.`,
+          );
+        }
+
         const ref = await gh('GET', `/repos/${me}/${name}/git/ref/heads/${encodeURIComponent(baseBranch)}`);
         await gh('POST', `/repos/${me}/${name}/git/refs`, { ref: `refs/heads/${head}`, sha: ref.object.sha });
 
