@@ -8,6 +8,7 @@
 - **Delegates to itself** — `spawn_subagent` / `spawn_subagents`: recursive, parallel, nested spaces, roll-up, hard caps.
 - **One process, one Chromium** — a tab per agent; started on demand and stopped when idle.
 - **Plain-file state** — chats, spaces, worker types, skills, tools. No services to run.
+- **Library-ready** — `createRuntime()` + `dot.run()` for your own Node projects; the CLI is just a test harness.
 
 Each CLI window is its own agent sharing that one Chromium.
 
@@ -39,6 +40,29 @@ microdot.bat --resume <id>              # resume a saved chat
 | `/type [name]` | show or set this worker's type |
 | `/mission [text]` | show or set this space's `mission.md` |
 | `/reset`, `/shots`, `/help`, `/exit` | |
+
+## Use as a library
+```js
+import { createRuntime } from 'microdot';
+
+const rt = await createRuntime({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  dataDir: '/srv/dots',        // project layer (chats/spaces/tools)
+  browser: 'on-demand',        // 'off' (search-only, no Chromium) | 'on-demand' | 'always'
+  compact: true,               // keep long runs bounded
+});
+
+rt.registerTool({ name: 'app_time', description: 'Current time.', parameters: { type: 'object', properties: {} }, run: async () => ({ now: Date.now() }) });
+
+const dot = await rt.dot('analyst', { type: 'researcher', mission: 'track NVDA' });
+const text = await dot.run('summarise the latest earnings', {
+  onToken: (t) => process.stdout.write(t),
+  onTool: (kind, name) => {},
+});
+
+await rt.close(); // stops the shared Chromium + worker when idle
+```
+See [`examples/run-dot.mjs`](examples/run-dot.mjs). The CLI is a thin test harness over this same core.
 
 ## Docs
 - **[docs/guide.md](docs/guide.md)** — architecture, spaces & layers, tools, sub-agents, the sandbox, compaction, cleanup, and the full config reference.

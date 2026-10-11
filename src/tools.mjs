@@ -374,7 +374,7 @@ const SPAWN_MANY_DEF = {
 
 const BUILTIN_NAMES = new Set([...BUILTINS.map((t) => t.function.name), 'spawn_subagent', 'spawn_subagents']);
 
-export async function createTools({ host, agentId, textLimit = 32768, space, delegate } = {}) {
+export async function createTools({ host, agentId, textLimit = 32768, space, delegate, hostTools = [] } = {}) {
   const clip = (s) => (typeof s === 'string' ? s.slice(0, textLimit) : '');
   const page = () => host.getPage();
   const dir = customDir();
@@ -388,7 +388,12 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
   const custom = await loadCustomTools();
 
   // Live tool list handed to the model; mutated when new tools are created.
-  const definitions = [...BUILTINS, ...(delegate ? [SPAWN_DEF, SPAWN_MANY_DEF] : []), ...[...custom.values()].map((t) => t.definition)];
+  const definitions = [
+    ...BUILTINS,
+    ...(delegate ? [SPAWN_DEF, SPAWN_MANY_DEF] : []),
+    ...hostTools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters } })),
+    ...[...custom.values()].map((t) => t.definition),
+  ];
 
   const ctx = {
     agentId,
@@ -504,6 +509,10 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
       }
       return await c.run(args, ctx);
     }
+
+    // Host-registered tools (provided by the embedding app).
+    const ht = hostTools.find((t) => t.name === name);
+    if (ht) return await ht.run(args, ctx);
 
     switch (name) {
       case 'spawn_subagent': {

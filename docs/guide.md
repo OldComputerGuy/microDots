@@ -3,6 +3,26 @@
 Deep-dive docs. Start with the [README](../README.md); small-server deploy is in
 [`deploy/DEPLOY.md`](../deploy/DEPLOY.md).
 
+## Library / API
+```js
+import { createRuntime } from 'microdot';
+
+const rt = await createRuntime({ apiKey, dataDir: '/srv/dots', browser: 'on-demand', compact: true });
+rt.registerTool({ name, description, parameters, run: async (args, ctx) => { /* … */ } });
+
+const dot = await rt.dot('analyst', { type: 'researcher', mission: 'track NVDA' });
+const text = await dot.run('summarise the latest earnings', { onToken, onTool });
+
+await rt.close();
+```
+
+- `createRuntime(options)` owns the heavy resources **once** — one Chromium (on demand) + one sandbox worker — so `dot(...)` is cheap.
+- `browser`: `'off'` (no Chromium; `web_search`/`web_fetch`/tools only) · `'on-demand'` (default) · `'always'`.
+- `dot(name, { type, mission })` → `{ name, space, type, messages, run(task, {onToken, onTool}), reset() }`. `run` streams and resolves to the final text.
+- `rt.registerTool({ name, description, parameters, run })` adds an **app-owned host tool** (runs in-process with `ctx`).
+- Sub-agents, self-authored tools, spaces, chats and compaction all work exactly as in the CLI.
+- Every option falls back to the matching `MICRODOT_*` env var; the **CLI is a thin test harness** over this same core.
+
 ## Architecture
 - The first MicroDot CLI **launches one Chromium** (persistent, headless or headful) exposing CDP; every other agent connects to it.
 - Each CLI process is **one agent** and works in its **own tab**.

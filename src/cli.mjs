@@ -1,14 +1,16 @@
 // MicroDot CLI: one agent per process, all attached to one shared Chromium.
 // `/new` opens a new terminal (a new agent).
 import readline from 'node:readline';
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
-import { resolve, relative, join } from 'node:path';
+import { readdirSync, readFileSync, rmSync } from 'node:fs';
+import { resolve, join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { createBrowserHost } from './browser-host.mjs';
 import { createTools, openPath, pruneScreenshots } from './tools.mjs';
 import { runAgent } from './agent.mjs';
 import { createMarkdownStream } from './markdown.mjs';
 import { createBusy } from './busy.mjs';
+import { buildSystem } from './prompt.mjs';
+import { makeSpawner } from './spawner.mjs';
 import { stopSandboxWorker } from './tool-sandbox.mjs';
 import { listSkills } from './skills.mjs';
 import { ensureSpace, readMission, writeMission, shotsDir, getSpaceType, setSpaceType } from './space.mjs';
@@ -54,11 +56,6 @@ const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
 const VERBOSE = (process.env.MICRODOT_VERBOSE ?? 'false') === 'true';
 const busy = createBusy();
 
-const SYSTEM_BASE = `You are MicroDot, a small autonomous agent with your own browser tab in a shared Chromium. You have tools to fetch the web and to drive your tab. Be concise and factual.
-- Prefer web_search for current information; use http_get for plain pages; use the browser for pages that need JavaScript or interaction.
-- Always report what you actually observed. Never invent page content.
-- When your task is complete, answer the user directly in a short summary.`;
-
 // Each worker has its own space: spaces/<worker_name>/ (mission.md + files).
 ensureProject();
 const spacePath = ensureSpace(agentName);
@@ -66,30 +63,6 @@ const mission = readMission(agentName).trim();
 
 let workerType = (process.env.MICRODOT_WORKER_TYPE || '').trim() || getSpaceType(agentName) || 'default';
 setSpaceType(agentName, workerType);
-
-// Build the system prompt for a worker or sub-agent.
-function buildSystem({ space, type, mission: missionText, context, deliverables, isSub }) {
-  const typeText = readWorkerType(type).trim();
-  let s = SYSTEM_BASE;
-  s += typeText
-    ? `\n\nYour worker type "${type}" (how you behave):\n${typeText}`
-    : `\n\nYour worker type is "${type}" (no description file found in ./worker-types/).`;
-  s += `\n\nYour space: ${space}\nKeep the files you produce (documents, notes, outputs, downloads) here.`;
-  if (missionText) s += `\n\nYour mission (mission.md):\n${missionText}`;
-  const skills = listSkills();
-  if (skills.length) {
-    s += `\n\nSaved skills (call read_skill to load one, then follow its steps):\n${skills
-      .map((x) => `- ${x.name}: ${x.description}`)
-      .join('\n')}`;
-  }
-  if (isSub) {
-    s += `\n\nYou are a sub-agent, working autonomously on ONE mission.`;
-    if (context) s += `\n\nContext from your parent:\n${context}`;
-    if (deliverables) s += `\n\nDeliverables your parent needs:\n${deliverables}`;
-    s += `\n\nWhen you finish, write report.json in your space with { summary, findings:[..], sources:[{title,url}], artifacts:[..], children:[..] }, write a readable report.md, then reply with a concise summary. If part of the mission needs deeper work you may call spawn_subagent (subject to limits) and include its digest under children[].`;
-  }
-  return s;
-}
 
 const SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
 
@@ -136,23 +109,6 @@ function compactFor(space, depth) {
       if (VERBOSE) console.log(dim(`${'  '.repeat(depth)}  · ${m}`));
     },
   };
-}
-
-function slugify(s) {
-  return (
-    String(s || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 40) || 'task'
-  );
-}
-
-function uniqueChildDir(parentSpace, base) {
-  let name = base;
-  let n = 2;
-  while (existsSync(resolve(parentSpace, 'subagents', name))) name = `${base}-${n++}`;
-  return name;
 }
 
 function spawnAgentTerminal(name, type) {
@@ -217,109 +173,27 @@ async function main() {
   await sweepOrphanTabs(); // clean up tabs left behind by crashed agents
   await host.getPage(); // this agent's tab exists from the start
 
-  // --- sub-agent spawner -------------------------------------------------
-  const budget = { agents: 0 };
-  const relPath = (p) => relative(process.cwd(), p).replace(/\\/g, '/');
-
-  function makeDelegate({ parentSpace, depth }) {
-    async function runChild(args) {
-      if (!allowSpawn) return { declined: true, reason: 'spawning disabled (MICRODOT_ALLOW_SPAWN=false)' };
-      if (depth >= maxDepth) return { declined: true, reason: `max depth ${maxDepth} reached` };
-      if (budget.agents >= maxAgents) return { declined: true, reason: `max agents ${maxAgents} reached` };
-
-      // reserve budget synchronously so parallel batches can't over-spend
-      const childName = uniqueChildDir(parentSpace, slugify(args.name || args.mission));
-      const childSpace = resolve(parentSpace, 'subagents', childName);
-      const childType = String(args.type || 'default').trim();
-      mkdirSync(resolve(childSpace, 'shots'), { recursive: true });
-      writeFileSync(resolve(childSpace, 'mission.md'), `${String(args.mission || '').trim()}\n`);
-      writeFileSync(resolve(childSpace, 'worker_type'), `${childType}\n`);
-      budget.agents++;
-      const started = Date.now();
-      if (VERBOSE) {
-        console.log(
-          dim(`${'  '.repeat(depth)}  ⤷ spawn ${childName} [${childType}] (agents ${budget.agents}/${maxAgents}, depth ${depth + 1}/${maxDepth})${debug ? ` @${new Date(started).toISOString().slice(11, 23)}` : ''}`),
-        );
-      }
-
-      // Each agent gets its OWN tab (its own CDP host) on the shared Chromium —
-      // created now, never changed, closed when the agent is done.
-      const childHost = await createBrowserHost({ headless, isolate, agentId: childName });
-      await childHost.getPage();
-      const childTools = await createTools({
-        host: childHost,
-        agentId: childName,
-        textLimit,
-        space: childSpace,
-        delegate: makeDelegate({ parentSpace: childSpace, depth: depth + 1 }),
-      });
-      const childMessages = [
-        {
-          role: 'system',
-          content: buildSystem({
-            space: childSpace,
-            type: childType,
-            mission: args.mission,
-            context: args.context,
-            deliverables: args.deliverables,
-            isSub: true,
-          }),
-        },
-        { role: 'user', content: 'Complete your mission and report back.' },
-      ];
-
-      let status = 'done';
-      try {
-        await runAgent({ messages: childMessages, tools: childTools, model, apiKey, baseUrl, textLimit, maxSteps, onTool: VERBOSE ? makeOnTool(depth + 1) : undefined, compact: compactFor(childSpace, depth + 1) });
-      } catch {
-        status = 'failed';
-      } finally {
-        await childHost.closeTab().catch(() => {});
-        await childHost.close().catch(() => {});
-      }
-
-      let report = null;
-      try {
-        report = JSON.parse(readFileSync(resolve(childSpace, 'report.json'), 'utf8'));
-      } catch {
-        /* none written */
-      }
-      const lastAssistant = [...childMessages].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string');
-      const digest = {
-        child: childName,
-        space: relPath(childSpace),
-        status,
-        mission: args.mission,
-        summary: report?.summary || lastAssistant?.content || '(no summary)',
-        findings: report?.findings || [],
-        sources: report?.sources || [],
-        artifacts: report?.artifacts || [],
-        report_path: existsSync(resolve(childSpace, 'report.md')) ? relPath(resolve(childSpace, 'report.md')) : null,
-        children: report?.children || [],
-      };
-      const ms = Date.now() - started;
-      if (VERBOSE) console.log(dim(`${'  '.repeat(depth + 1)}└─ ${childName} [${status}] ${ms}ms: ${String(digest.summary).slice(0, 120)}`));
-      return digest;
-    }
-
-    const delegate = (args) => runChild(args);
-    delegate.many = async (tasks, concurrency) => {
-      const list = Array.isArray(tasks) ? tasks : [];
-      if (!list.length) return [];
-      const limit = Math.max(1, Math.min(Number(concurrency) || maxConcurrent, maxConcurrent, list.length));
-      const results = new Array(list.length);
-      let next = 0;
-      async function worker() {
-        while (next < list.length) {
-          const i = next++;
-          results[i] = await runChild(list[i]);
-        }
-      }
-      await Promise.all(Array.from({ length: limit }, () => worker()));
-      return results;
-    };
-    return delegate;
-  }
+  // --- sub-agent spawner (shared with the library) -----------------------
+  const makeDelegate = makeSpawner({
+    model,
+    apiKey,
+    baseUrl,
+    textLimit,
+    maxSteps,
+    maxDepth,
+    maxAgents,
+    maxConcurrent,
+    allowSpawn,
+    sandbox: (process.env.MICRODOT_TOOL_SANDBOX ?? 'auto').toLowerCase(),
+    headless,
+    isolate,
+    debug,
+    compactFor,
+    onToolFor: (d) => makeOnTool(d),
+    log: (m) => {
+      if (VERBOSE) console.log(dim(m));
+    },
+  });
 
   const tools = await createTools({
     host,

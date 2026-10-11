@@ -5,6 +5,10 @@
   "description": "MicroDot - a Dot on a diet: a bare-bones, self-extending agent that writes its own tools and spawns sub-agents. One process, one shared Chromium. Status: working, but in progress.",
   "license": "MIT",
   "type": "module",
+  "main": "src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
   "bin": {
     "microdot": "src/cli.mjs"
   },
