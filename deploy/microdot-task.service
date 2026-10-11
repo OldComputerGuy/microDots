@@ -1,0 +1,36 @@
+# MicroDot one-shot Dot as a systemd service.
+#
+#   install:  sudo cp deploy/microdot-task.service /etc/systemd/system/
+#             sudo systemctl daemon-reload
+#   run:      sudo systemctl start microdot-task
+#   schedule: pair with microdot-task.timer
+#
+# The ExecStart points at the ENGINE install (code + shipped defaults); the
+# WorkingDirectory is the PROJECT dir, so chats/spaces land in <project>/.microdot.
+
+[Unit]
+Description=MicroDot — run a Dot once
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=microdot
+WorkingDirectory=/srv/dots
+EnvironmentFile=-/opt/microdot/.env
+
+# --- small-server caps (tune to the box) ---
+MemoryMax=768M
+MemoryHigh=640M
+CPUQuota=150%
+TasksMax=256
+
+# --- light hardening ---
+NoNewPrivileges=true
+PrivateTmp=true
+
+# absolute engine path; project layer comes from WorkingDirectory
+ExecStart=/usr/bin/node /opt/microdot/src/cli.mjs --prompt-file /opt/microdot/tasks/daily.md
+
+[Install]
+WantedBy=multi-user.target

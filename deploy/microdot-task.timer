@@ -1,0 +1,19 @@
+# Run the MicroDot Dot on a schedule (pairs with microdot-task.service).
+#
+#   install:  sudo cp deploy/microdot-task.timer /etc/systemd/system/
+#             sudo systemctl enable --now microdot-task.timer
+#   check:    systemctl list-timers microdot-task.timer
+
+[Unit]
+Description=Schedule the MicroDot Dot
+
+[Timer]
+# daily at 07:00; adjust as you like (OnCalendar=*-*-* 07:00:00, *:0/30, etc.)
+OnCalendar=*-*-* 07:00:00
+# catch up once if the box was off at the scheduled time
+Persistent=true
+# spread load a little
+RandomizedDelaySec=120
+
+[Install]
+WantedBy=timers.target

@@ -17,6 +17,8 @@ cp .env.example .env                   # Windows: copy .env.example .env
 # set OPENROUTER_API_KEY in .env, or rely on an OpenRouterKey env var
 ```
 
+> Deploying on a **small server**? See [`deploy/DEPLOY.md`](deploy/DEPLOY.md) — a systemd unit + timer, lean Chromium flags, and resource caps.
+
 ## Run
 ```sh
 microdot.bat                      # Windows: interactive CLI (agent "main")
