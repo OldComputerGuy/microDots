@@ -1,6 +1,6 @@
 # MicroDot
 
-> ⚠️ **Work in progress.** MicroDot is early and moving fast — expect rough edges and changing config, tools and file layout. It is **not production-hardened** yet; treat it as experimental.
+> **Status: working, but in progress.** The core works today, but it's early and moving fast — expect rough edges and changing config, tools and file layout. **Not production-hardened.**
 
 **A Dot on a diet** — a bare-bones, **self-extending** agent built to run on small servers. No CopilotKit, no React, no server, no DB, no Docker.
 
@@ -10,6 +10,19 @@
 - **State is plain files** — chats, spaces, worker types, skills, tools. No services to run.
 
 Each CLI window is its own agent sharing that one Chromium.
+
+## Status
+**Working, but in progress.** The core is functional and used day-to-day:
+
+- ✅ self-authored tools (`create_tool`, sandboxed) + management, skills, worker types
+- ✅ self-delegation — `spawn_subagent`/`spawn_subagents`, nested spaces, roll-up, depth/agent/concurrency caps
+- ✅ one shared Chromium, a tab per agent, started on demand and stopped when idle
+- ✅ per-project spaces & chats; Parallel web search/fetch; context compaction + offload
+
+Still evolving / rough:
+
+- ⚠️ config, tool and file layout may still change — **not production-hardened**
+- ⚠️ heavy parallel browser use and cross-project cleanup have edge cases
 
 ## Architecture
 - The first MicroDot CLI **launches one Chromium** (persistent, headless or headful) exposing CDP.

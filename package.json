@@ -2,7 +2,8 @@
   "name": "microdot",
   "version": "0.1.0",
   "private": true,
-  "description": "MicroDot - a bare-bones single agent with a CLI and a Playwright browser. No CopilotKit, no React, no server.",
+  "description": "MicroDot - a Dot on a diet: a bare-bones, self-extending agent that writes its own tools and spawns sub-agents. One process, one shared Chromium. Status: working, but in progress.",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "microdot": "src/cli.mjs"
