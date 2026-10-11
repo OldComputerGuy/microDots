@@ -1,0 +1,75 @@
+name: Bug report
+description: Something broke or behaved unexpectedly.
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. Please give us enough to reproduce it — a bug we
+        can't reproduce is hard to fix.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what actually happened?
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. run `microdot.bat --prompt "..."`
+        2. ask it to ...
+        3. see error
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Exact command
+      placeholder: microdot.bat --prompt "summarise https://example.com"
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant output / logs
+      description: Paste the error. Re-run with `MICRODOT_VERBOSE=true` for tool lines.
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: os
+    attributes:
+      label: OS
+      placeholder: Windows 11 / Ubuntu 24.04 / ...
+    validations:
+      required: true
+  - type: input
+    id: node
+    attributes:
+      label: Node version
+      placeholder: output of `node -v`
+    validations:
+      required: true
+  - type: dropdown
+    id: sandbox
+    attributes:
+      label: Tool sandbox mode
+      options:
+        - auto (default)
+        - wsl
+        - native
+        - in-process fallback
+        - not sure
+    validations:
+      required: false
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      placeholder: deepseek/deepseek-v4.1-flash
+    validations:
+      required: false

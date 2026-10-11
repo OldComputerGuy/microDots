@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest an idea or improvement.
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        MicroDot's core stays **lean**: no CopilotKit, React, server, DB, or
+        Docker. The best-featured requests are small, focused, and fit that.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation, not just the solution.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+    validations:
+      required: false
+  - type: checkboxes
+    id: lean
+    attributes:
+      label: Scope check
+      options:
+        - label: This does not require a server, database, Docker, React, or a bundler.
+          required: false
+        - label: I'm happy to attempt a PR (or help test).
+          required: false

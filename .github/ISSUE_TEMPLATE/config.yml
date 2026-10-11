@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Read the docs first
+    url: https://github.com/OldComputerGuy/microDots/blob/main/docs/guide.md
+    about: Architecture, tools, sub-agents, the sandbox, the full config reference.
+  - name: Security issue
+    url: https://github.com/OldComputerGuy/microDots/security/policy
+    about: Please report vulnerabilities privately, not in a public issue.

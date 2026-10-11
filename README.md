@@ -1,5 +1,9 @@
 # MicroDot
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](#quick-start)
+[![status: in progress](https://img.shields.io/badge/status-in%20progress-orange.svg)](#)
+
 > **Status: working, but in progress** — early and moving fast; expect changing config, tools and layout. **Not production-hardened.**
 
 **A Dot on a diet** — a bare-bones, **self-extending** agent built to run on small servers. No CopilotKit, no React, no server, no DB, no Docker.
@@ -66,5 +70,7 @@ See [`examples/run-dot.mjs`](examples/run-dot.mjs). The CLI is a thin test harne
 
 ## Docs
 - **[docs/guide.md](docs/guide.md)** — architecture, spaces & layers, tools, sub-agents, the sandbox, compaction, cleanup, and the full config reference.
+- **[ROADMAP.md](ROADMAP.md)** — where it's going; `good first issue`s are welcome.
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** · **[SECURITY.md](SECURITY.md)** — how to help, and what to know before running untrusted inputs.
 - **[deploy/DEPLOY.md](deploy/DEPLOY.md)** — small-server deploy: systemd unit + timer, lean Chromium flags, resource caps.
 - **[LICENSE](LICENSE)** — MIT.
