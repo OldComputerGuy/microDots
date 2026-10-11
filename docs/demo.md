@@ -9,23 +9,47 @@ To regenerate the static hero from a run: `node scripts/render-hero.mjs`.
 
 ## What to show
 
-1. **Start** — `microdot.bat --prompt "..."` and the KITT scanner ticking.
-2. **A tool call** — a search/fetch line (run with `MICRODOT_VERBOSE=true`).
-3. **A browser action** — the shared Chromium visibly opening the page.
-4. **A sub-agent fan-out** (optional, if quick) — the spawn lines.
-5. **Result** — the final answer.
+MicroDot's only UI is the terminal — so you're recording the **MicroDot CLI**
+(`microdot.bat`) as it runs one task. There's no window or website to record.
+
+1. **Start** — launch the interactive CLI; the header line + `/help` appear.
+2. **Prompt** — type the task live at the `main@you>` prompt.
+3. **Work** — the KITT scanner ticks; with `MICRODOT_VERBOSE=true` the tool lines
+   (`→ web_search …`, `→ browser_open …`) scroll past.
+4. **Browser** — the real Chromium window/tab opening (needs
+   `MICRODOT_HEADLESS=false`, see below).
+5. **Answer** — the reply streams in, markdown and all.
 
 Keep it under 30s. No dead air; cut the waiting.
 
-## Suggested task
+## Exact script
 
-A single prompt that uses search + the browser and finishes fast:
-
-```sh
-MICRODOT_VERBOSE=true microdot.bat --prompt "What is the latest stable Node.js LTS? Open nodejs.org, confirm it, and give one source URL."
+```powershell
+# from C:\Users\Test\Desktop\dots\MicroDot
+$env:MICRODOT_VERBOSE  = "true"    # show tool lines instead of just the scanner
+$env:MICRODOT_HEADLESS = "false"   # IMPORTANT: show the real Chromium window
+.\microdot.bat
 ```
 
-On Windows keep the terminal at ~100×30 so text is legible at 2× speed.
+Then type at the prompt:
+
+```
+Search the web for the latest stable Node.js LTS, open nodejs.org to confirm it, and give one source URL.
+```
+
+> **`MICRODOT_HEADLESS` defaults to `true`** — in that mode the browser is
+> invisible and the demo looks like "just a chat". Set it to `false` so viewers
+> see the agent actually drive a real browser tab.
+
+**Framing options**
+
+- **Terminal only** — simplest. Record the terminal (Area/Window) at ~100×30
+  columns, font ~16–18pt so lines don't wrap and text stays legible.
+- **Terminal + browser** (best) — with headful Chromium, put the browser window
+  beside the terminal and record an **Area** covering both, so the tab opening
+  is visible in-frame.
+- **Optional second clip** — type `/new` to pop a fresh worker window; it shows
+  the multi-agent `/new` → new agent + space + type behaviour.
 
 ## Tools
 
