@@ -8,7 +8,7 @@
 
 <p align="center">
   <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
-  <img alt="Node >= 20" src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg">
+  <img alt="Node 20 or later" src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg">
   <img alt="status: in progress" src="https://img.shields.io/badge/status-in%20progress-orange.svg">
 </p>
 
