@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../assets/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="../assets/logo.png">
+    <img alt="MicroDot — a Dot on a diet" src="../assets/logo.png" width="360">
+  </picture>
+</p>
+
 # Why I built MicroDot
 
 *An origin story — the launch post. Cross-post to dev.to / Hashnode / your blog.*

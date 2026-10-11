@@ -1,8 +1,16 @@
-# MicroDot
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="docs/assets/logo.png">
+    <img alt="MicroDot — a Dot on a diet" src="docs/assets/logo.png" width="440">
+  </picture>
+</p>
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg)](#quick-start)
-[![status: in progress](https://img.shields.io/badge/status-in%20progress-orange.svg)](#)
+<p align="center">
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue.svg"></a>
+  <img alt="Node >= 20" src="https://img.shields.io/badge/node-%3E%3D20-brightgreen.svg">
+  <img alt="status: in progress" src="https://img.shields.io/badge/status-in%20progress-orange.svg">
+</p>
 
 > **Status: working, but in progress** — early and moving fast; expect changing config, tools and layout. **Not production-hardened.**
 
