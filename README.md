@@ -166,6 +166,13 @@ Long runs don't grow without bound. With `MICRODOT_COMPACT=true`:
 
 Applies to the root agent **and every sub-agent**. Each compaction costs one extra (non‑streaming) model call; set `MICRODOT_SUMMARY_MODEL` to a cheaper model for those. The token counts are approximate (no local tokenizer), governed by the chars/token ratio.
 
+## Self-cleanup
+An agent tidies up after itself:
+
+- **On exit** (including Ctrl+C) it **closes its tab**, releases its lease, and — if it was the **last** agent — **stops the shared Chromium** (one browser, started and stopped on demand). It also removes its **screenshots** (`spaces/<worker>/shots`) and the sub-agent scratch tree.
+- **On start** it **sweeps orphaned tabs** left behind by crashed agents: tab leases live in `<engine>/.chromium-tabs`, and any page with no live owner is closed.
+- Chats and spaces are **project data** and are always kept. Set `MICRODOT_KEEP_SHOTS=true` to keep screenshots too.
+
 ## Config (`.env`)
 | var | default | meaning |
 |---|---|---|
@@ -215,12 +222,12 @@ Applies to the root agent **and every sub-agent**. Each compaction costs one ext
 | `MICRODOT_KEEP_RECENT` | `6` | recent messages kept verbatim during compaction |
 | `MICRODOT_OFFLOAD_TOKENS` | `4000` | offload tool outputs larger than this to the space |
 | `MICRODOT_SUMMARY_MODEL` | `qwen/qwen3.6-flash` | cheap model for summaries (falls back to `MICRODOT_MODEL`) |
+| `MICRODOT_KEEP_SHOTS` | `false` | keep screenshots on exit (else removed) |
 
 ## Notes
 - Assistant replies are rendered as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code blocks, links, rules).
 - Screenshots are written to `spaces/<worker>/shots/` (per worker) at `MICRODOT_VIEWPORT` size (default 1600×1000).
-- The shared Chromium uses a profile at `./.chromium-profile/`.
-- To stop the shared browser, close its window (headful) or end the `chrome`/`chrome.exe` process.
+- The shared Chromium uses a profile at `<engine>/.chromium-profile/` and is started/stopped automatically (see Self-cleanup); if you ever need to, end the `chrome`/`chrome.exe` process.
 - Completely independent of the OpenDots app.
 
 

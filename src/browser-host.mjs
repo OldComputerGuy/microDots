@@ -7,6 +7,7 @@ import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { engineDir } from './home.mjs';
+import { recordChromiumPid, registerTab, unregisterTab, targetIdOf } from './tabs.mjs';
 
 const cdpUrl = () => process.env.MICRODOT_CDP_URL ?? 'http://127.0.0.1:9222';
 
@@ -56,6 +57,7 @@ async function ensureSharedChromium(headless) {
   args.push('about:blank');
   const child = spawn(exe, args, { detached: true, stdio: 'ignore' });
   child.unref();
+  if (child.pid) recordChromiumPid(child.pid);
   for (let i = 0; i < 60; i++) {
     if (await cdpReady(url)) return;
     await new Promise((r) => setTimeout(r, 500));
@@ -63,7 +65,7 @@ async function ensureSharedChromium(headless) {
   throw new Error('Could not start the shared Chromium (CDP not reachable).');
 }
 
-export async function createBrowserHost({ headless = true, isolate = false } = {}) {
+export async function createBrowserHost({ headless = true, isolate = false, agentId = 'main' } = {}) {
   await ensureSharedChromium(headless);
   const browser = await chromium.connectOverCDP(cdpUrl());
 
@@ -81,16 +83,28 @@ export async function createBrowserHost({ headless = true, isolate = false } = {
   }
 
   let page = null;
+  let tabId = null;
   async function getPage() {
     if (!page || page.isClosed()) {
       page = await context.newPage();
       // For the shared default context the page inherits the window size;
       // set an explicit large viewport so captures are consistent and legible.
       await page.setViewportSize(viewport).catch(() => {});
+      // Lease this tab so a crashed agent's tab can be swept later.
+      try {
+        tabId = await targetIdOf(page);
+        registerTab(tabId, { agent: agentId });
+      } catch {
+        tabId = null;
+      }
     }
     return page;
   }
   async function closeTab() {
+    if (tabId) {
+      unregisterTab(tabId);
+      tabId = null;
+    }
     if (page) {
       await page.close().catch(() => {});
       page = null;

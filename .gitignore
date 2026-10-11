@@ -8,6 +8,8 @@ npm-debug.log*
 # Runtime artifacts (generated)
 screenshots/
 .chromium-profile/
+.chromium-tabs/
+.chromium.pid
 workspace/
 spaces/
 chats/

@@ -14,6 +14,7 @@ import { ensureSpace, readMission, writeMission, shotsDir, getSpaceType, setSpac
 import { listWorkerTypes, readWorkerType } from './worker-types.mjs';
 import { newChatId, saveChat, listChats, loadChat } from './chats.mjs';
 import { ensureProject } from './home.mjs';
+import { sweepOrphanTabs, stopChromiumIfIdle } from './tabs.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -35,6 +36,7 @@ const contextTokens = Number(process.env.MICRODOT_CONTEXT_TOKENS ?? 24000);
 const keepRecent = Number(process.env.MICRODOT_KEEP_RECENT ?? 6);
 const offloadTokens = Number(process.env.MICRODOT_OFFLOAD_TOKENS ?? 4000);
 const summaryModel = process.env.MICRODOT_SUMMARY_MODEL || 'qwen/qwen3.6-flash';
+const keepShots = (process.env.MICRODOT_KEEP_SHOTS ?? 'false') === 'true';
 const agentName = process.env.MICRODOT_AGENT || 'main';
 
 if (!apiKey) {
@@ -203,7 +205,8 @@ async function main() {
         ? argv.slice(pi + 1).join(' ')
         : argv.filter((a) => a !== '--once').join(' ').trim();
 
-  const host = await createBrowserHost({ headless, isolate });
+  const host = await createBrowserHost({ headless, isolate, agentId: agentName });
+  await sweepOrphanTabs(); // clean up tabs left behind by crashed agents
   await host.getPage(); // this agent's tab exists from the start
 
   // --- sub-agent spawner -------------------------------------------------
@@ -231,7 +234,7 @@ async function main() {
 
       // Each agent gets its OWN tab (its own CDP host) on the shared Chromium —
       // created now, never changed, closed when the agent is done.
-      const childHost = await createBrowserHost({ headless, isolate });
+      const childHost = await createBrowserHost({ headless, isolate, agentId: childName });
       await childHost.getPage();
       const childTools = await createTools({
         host: childHost,
@@ -328,6 +331,28 @@ async function main() {
       /* ignore */
     }
   }
+
+  // Full agent shutdown: release the tab, stop the shared browser if we were the
+  // last agent, and clean scratch (sub-agents, screenshots) unless kept.
+  async function cleanup() {
+    autosave();
+    cleanupSubagents();
+    await host.closeTab().catch(() => {});
+    await stopChromiumIfIdle().catch(() => {});
+    await host.close().catch(() => {});
+    stopSandboxWorker();
+    if (!keepShots) {
+      try {
+        rmSync(shotsDir(agentName), { recursive: true, force: true });
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+
+  process.on('SIGINT', () => {
+    cleanup().finally(() => process.exit(0));
+  });
   // Conversation state (persisted so it can be resumed later).
   const chat = { id: newChatId(), title: '', agent: agentName, type: workerType, space: `spaces/${agentName}`, cwd: process.env.MICRODOT_LAUNCH_DIR || process.cwd(), model, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
   function autosave() {
@@ -390,11 +415,7 @@ async function main() {
       process.exit(1);
     }
     await turn(prompt);
-    autosave();
-    cleanupSubagents();
-    await host.closeTab().catch(() => {});
-    await host.close();
-    stopSandboxWorker();
+    await cleanup();
     rl.close();
     return;
   }
@@ -559,11 +580,7 @@ async function main() {
     }
     await turn(line);
   }
-  autosave();
-  cleanupSubagents();
-  await host.closeTab().catch(() => {});
-  await host.close();
-  stopSandboxWorker();
+  await cleanup();
   rl.close();
 }
 
