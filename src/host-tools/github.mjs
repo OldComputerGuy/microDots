@@ -335,43 +335,39 @@ export function createGithubTools({ token, maxPullRequests = 6, planFile = null 
 
         if (submitted >= maxPullRequests) throw new Error(`PR limit reached (${maxPullRequests}).`);
 
-        const name = upstream.split('/')[1];
-        await gh('POST', `/repos/${upstream}/forks`, {}).catch((e) => {
+        // Create (or find) our fork. GitHub may suffix the name (e.g. `-1`) when
+        // we already own a repo of that name, so resolve the ACTUAL fork repo.
+        const forkResp = await gh('POST', `/repos/${upstream}/forks`, {}).catch((e) => {
           if (!/already exists|Name already exists/i.test(String(e.message))) throw e;
+          return null;
         });
-        let ready = false;
-        for (let i = 0; i < 30 && !ready; i++) {
-          try {
-            await gh('GET', `/repos/${me}/${name}`);
-            ready = true;
-          } catch {
-            await sleep(1000);
-          }
+        let forkFull = forkResp?.full_name;
+        for (let i = 0; !forkFull && i < 30; i++) {
+          const forks = await gh('GET', `/repos/${upstream}/forks?per_page=100`).catch(() => []);
+          const mine = (forks || []).find((f) => (f.owner?.login || '').toLowerCase() === me.toLowerCase());
+          if (mine) forkFull = mine.full_name;
+          else await sleep(1000);
         }
-        if (!ready) throw new Error('fork did not become available in time');
+        if (!forkFull) throw new Error(`could not create or find your fork of ${upstream}`);
 
-        // Guard against fork NAME collisions: `me/<name>` might be a fork of a
-        // DIFFERENT upstream (GitHub won't create a second fork with the same
-        // name). Verify the parent before committing anything.
-        const forkMeta = await gh('GET', `/repos/${me}/${name}`);
+        // Safety: the resolved fork must actually be a fork of the upstream.
+        const forkMeta = await gh('GET', `/repos/${forkFull}`);
         const parent = (forkMeta.parent?.full_name || '').toLowerCase();
         if (parent !== upstream.toLowerCase()) {
-          throw new Error(
-            `fork name collision: ${me}/${name} is a fork of ${forkMeta.parent?.full_name ?? '(not a fork)'}, not ${upstream}. Rename it on GitHub to free the name, then retry.`,
-          );
+          throw new Error(`fork ${forkFull} is a fork of ${forkMeta.parent?.full_name ?? '(not a fork)'}, not ${upstream}.`);
         }
 
-        const ref = await gh('GET', `/repos/${me}/${name}/git/ref/heads/${encodeURIComponent(baseBranch)}`);
-        await gh('POST', `/repos/${me}/${name}/git/refs`, { ref: `refs/heads/${head}`, sha: ref.object.sha });
+        const ref = await gh('GET', `/repos/${forkFull}/git/ref/heads/${encodeURIComponent(baseBranch)}`);
+        await gh('POST', `/repos/${forkFull}/git/refs`, { ref: `refs/heads/${head}`, sha: ref.object.sha });
 
         let fileSha = null;
         try {
-          const cur = await gh('GET', `/repos/${me}/${name}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(baseBranch)}`);
+          const cur = await gh('GET', `/repos/${forkFull}/contents/${encodeURIComponent(path)}?ref=${encodeURIComponent(baseBranch)}`);
           if (cur && !Array.isArray(cur)) fileSha = cur.sha;
         } catch {
           /* new file */
         }
-        await gh('PUT', `/repos/${me}/${name}/contents/${encodeURIComponent(path)}`, {
+        await gh('PUT', `/repos/${forkFull}/contents/${encodeURIComponent(path)}`, {
           message: title,
           content: Buffer.from(finalContent, 'utf8').toString('base64'),
           ...(fileSha ? { sha: fileSha } : {}),
