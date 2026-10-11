@@ -75,10 +75,15 @@ async function confirmCreate(action, code) {
     console.log(dim(`  (non-interactive) auto-approving ${action}`));
     return true;
   }
-  console.log(dim(`\n  new tool — ${action}:`));
-  for (const line of String(code ?? '').split('\n')) console.log(yellow(`  │ ${line}`));
-  const a = (await ask(dim('  create this tool? [y/N] '))).trim().toLowerCase();
-  return a === 'y' || a === 'yes';
+  busy.pause(); // hide the spinner so the prompt is actually visible
+  try {
+    console.log(dim(`\n  new tool — ${action}:`));
+    for (const line of String(code ?? '').split('\n')) console.log(yellow(`  │ ${line}`));
+    const a = (await ask(dim('  create this tool? [y/N] '))).trim().toLowerCase();
+    return a === 'y' || a === 'yes';
+  } finally {
+    busy.resume();
+  }
 }
 
 function makeOnTool(depth = 0) {

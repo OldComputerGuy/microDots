@@ -8,10 +8,11 @@ export function createBusy({ stream = process.stdout } = {}) {
   let label = '';
   let timer = null;
   let active = false;
+  let suspended = false;
   const tty = !!stream.isTTY;
 
   function render() {
-    if (!tty || !active) return;
+    if (!tty || !active || suspended) return;
     const chars = new Array(width).fill('-');
     chars[pos] = 'o';
     const line = (label ? `${label}  ` : '') + chars.join('');
@@ -32,6 +33,7 @@ export function createBusy({ stream = process.stdout } = {}) {
   return {
     start(text = '') {
       label = text;
+      suspended = false;
       if (!active) {
         active = true;
         if (tty && !timer) timer = setInterval(tick, 90);
@@ -49,6 +51,23 @@ export function createBusy({ stream = process.stdout } = {}) {
         timer = null;
       }
       if (tty) stream.write('\r\x1b[2K');
+    },
+    // Temporarily hide the spinner so an interactive prompt (e.g. the
+    // create_tool approval) is actually visible. `resume()` restores it.
+    pause() {
+      if (!active || suspended) return;
+      suspended = true;
+      if (timer) {
+        clearInterval(timer);
+        timer = null;
+      }
+      if (tty) stream.write('\r\x1b[2K');
+    },
+    resume() {
+      if (!suspended) return;
+      suspended = false;
+      if (active && tty && !timer) timer = setInterval(tick, 90);
+      render();
     },
     get active() {
       return active;
