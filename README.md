@@ -1,5 +1,7 @@
 # MicroDot
 
+> ⚠️ **Work in progress.** MicroDot is early and moving fast — expect rough edges and changing config, tools and file layout. It is **not production-hardened** yet; treat it as experimental.
+
 **A Dot on a diet** — a bare-bones, **self-extending** agent built to run on small servers. No CopilotKit, no React, no server, no DB, no Docker.
 
 - **Builds its own tools** — `create_tool` writes new tools on the fly (`list_tools` / `delete_tool` to manage them); they run sandboxed.
