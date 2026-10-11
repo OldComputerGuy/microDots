@@ -134,10 +134,10 @@ export async function run(args, ctx) {
 }
 ```
 
-> ⚠️ Custom tool code runs **in the MicroDot Node process with your full local privileges** (filesystem, network, child processes) when the sandbox is off. Only let it create tools you trust; review `./tools-custom/*.mjs` and delete anything unwanted.
+> By default (`MICRODOT_TOOL_SANDBOX=auto`) self-authored tools run in the **isolated Linux worker** — WSL on Windows, native on Linux — and fall back to in-process only if it can't start (with a warning). Set it to `none` to always run in-process (full local privileges: filesystem, network, child processes); then only trust tools you've reviewed. Built-ins (browser behaviour, web search) always run on the host.
 
-### Tool sandbox backend (opt-in)
-Set `MICRODOT_TOOL_SANDBOX` to anything other than `none` to run self-authored tools in an isolated **Linux worker** instead of in-process. One worker script, two launchers:
+### Tool sandbox backend
+By default (`auto`) self-authored tools run in an isolated **Linux worker** (WSL on Windows, native on Linux) and fall back to in-process only if it can't start. One worker script, two launchers:
 
 - **Windows:** the worker runs **inside WSL2** (spawned via `wsl.exe`). Requires Node in WSL: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
 - **Linux/VPS:** the worker runs **natively** — no WSL.
@@ -225,7 +225,7 @@ An agent tidies up after itself:
 | `MICRODOT_MAX_CONCURRENT` | `8` | max sub-agents running at once |
 | `MICRODOT_DEBUG` | `false` | keep sub-agent spaces + verbose logs |
 | `PARALLEL_API_KEY` | — | optional; Parallel search key (anonymous free tier works without it) |
-| `MICRODOT_TOOL_SANDBOX` | `none` | anything else = run tools in the isolated Linux worker (WSL on Windows, native on Linux) |
+| `MICRODOT_TOOL_SANDBOX` | `auto` | `auto`=sandbox when available (else in-process); `none`=always in-process; `wsl`/`sandbox`=always sandbox |
 | `MICRODOT_SANDBOX_DIR` | — | advanced: explicit sandbox root; overrides `spaces/<worker>` |
 | `MICRODOT_SPACE` | worker name | space to use (an agent can attach to a shared space) |
 | `MICRODOT_MISSION` | — | initial `mission.md` text if the file doesn't exist |

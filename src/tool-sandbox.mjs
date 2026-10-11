@@ -91,16 +91,37 @@ function workerCommand() {
 let worker = null;
 let ready = null;
 let readyResolve = null;
+let readyReject = null;
+let startTimer = null;
 let seq = 0;
 let bwrapFailed = false;
 const runs = new Map(); // id -> { resolve, reject, log, timer }
 
 function ensureWorker() {
   if (worker) return ready;
-  ready = new Promise((res) => {
-    readyResolve = res;
+  ready = new Promise((res, rej) => {
+    readyResolve = () => {
+      if (startTimer) {
+        clearTimeout(startTimer);
+        startTimer = null;
+      }
+      res();
+    };
+    readyReject = (err) => {
+      if (startTimer) {
+        clearTimeout(startTimer);
+        startTimer = null;
+      }
+      rej(err);
+    };
   });
   startWorker();
+  // Never hang forever if the worker can't start (e.g. no WSL) — reject so the
+  // caller can fall back.
+  const t = Number(process.env.MICRODOT_SANDBOX_START_TIMEOUT_MS ?? 15000);
+  if (Number.isFinite(t) && t > 0) {
+    startTimer = setTimeout(() => readyReject?.(new Error(`sandbox worker did not start within ${t}ms`)), t);
+  }
   return ready;
 }
 
@@ -114,6 +135,26 @@ function startWorker() {
     readyResolve?.();
   };
 
+  const detach = (reason) => {
+    const wasCurrent = worker === child;
+    if (wasCurrent) worker = null;
+    for (const [id, r] of runs) {
+      clearTimeout(r.timer);
+      r.reject(new Error(reason));
+      runs.delete(id);
+    }
+    return wasCurrent;
+  };
+  const retryUnconfined = (label) => {
+    if (bwrap && !becameReady && !bwrapFailed) {
+      bwrapFailed = true;
+      process.stderr.write(`[sandbox] ${label}; falling back to the unconfined worker.\n`);
+      startWorker();
+      return true;
+    }
+    return false;
+  };
+
   let buf = '';
   child.stdout.on('data', (chunk) => {
     buf += chunk.toString('utf8');
@@ -125,25 +166,16 @@ function startWorker() {
     }
   });
   child.stderr.on('data', (d) => process.stderr.write(`[sandbox] ${d.toString('utf8')}`));
+  child.on('error', (err) => {
+    const wasCurrent = detach(`sandbox worker error: ${err.message}`);
+    if (!wasCurrent) return;
+    if (!retryUnconfined('failed to launch')) readyReject?.(new Error(`sandbox worker error: ${err.message}`));
+  });
   child.on('exit', () => {
-    const wasCurrent = worker === child;
-    if (wasCurrent) {
-      worker = null;
-    }
-    for (const [id, r] of runs) {
-      clearTimeout(r.timer);
-      r.reject(new Error('sandbox worker exited'));
-      runs.delete(id);
-    }
-    // If bubblewrap couldn't start the worker, silently fall back to an
-    // unconfined worker so a missing/blocked `bwrap` never hard-breaks calls.
-    if (wasCurrent && bwrap && !becameReady && !bwrapFailed) {
-      bwrapFailed = true;
-      process.stderr.write(
-        '[sandbox] bubblewrap unavailable; falling back to the unconfined worker ' +
-          '(install it with `wsl -- sudo apt-get install -y bubblewrap`, or set MICRODOT_SANDBOX_BWRAP=false).\n',
-      );
-      startWorker(); // readyResolve still points at the original promise
+    const wasCurrent = detach('sandbox worker exited');
+    if (!wasCurrent) return;
+    if (!retryUnconfined('bubblewrap unavailable') && !becameReady) {
+      readyReject?.(new Error('sandbox worker exited'));
     }
   });
 }

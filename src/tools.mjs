@@ -378,8 +378,8 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
   const clip = (s) => (typeof s === 'string' ? s.slice(0, textLimit) : '');
   const page = () => host.getPage();
   const dir = customDir();
-  const sandbox = (process.env.MICRODOT_TOOL_SANDBOX ?? 'none').toLowerCase();
-  const useSandbox = sandbox !== 'none';
+  const sandboxMode = (process.env.MICRODOT_TOOL_SANDBOX ?? 'auto').toLowerCase();
+  let useSandbox = sandboxMode !== 'none';
   const root = space ? resolve(space) : spaceDir(agentId);
   mkdirSync(root, { recursive: true });
   const backendName = (code) => (useSandbox && code ? (process.platform === 'win32' ? 'wsl' : 'sandbox') : 'in-process');
@@ -480,15 +480,27 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
     const c = custom.get(name);
     if (c) {
       if (useSandbox && c.code) {
-        return await runSandboxedTool({
-          code: c.code,
-          args,
-          root,
-          agentId,
-          bridge: sandboxBridge,
-          log: (m) => console.log(`  [${name}] ${m}`),
-          textLimit,
-        });
+        try {
+          return await runSandboxedTool({
+            code: c.code,
+            args,
+            root,
+            agentId,
+            bridge: sandboxBridge,
+            log: (m) => console.log(`  [${name}] ${m}`),
+            textLimit,
+          });
+        } catch (e) {
+          const msg = String(e?.message ?? e);
+          // 'auto': if the sandbox can't start, run tools in-process for the rest
+          // of this session (e.g. WSL/Node not available). Explicit modes don't.
+          if (sandboxMode === 'auto' && /sandbox worker|did not start/i.test(msg)) {
+            useSandbox = false;
+            console.error(`MicroDot: sandbox unavailable (${msg}); running tools in-process for this session.`);
+          } else {
+            throw e;
+          }
+        }
       }
       return await c.run(args, ctx);
     }
