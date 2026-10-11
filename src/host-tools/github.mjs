@@ -23,7 +23,7 @@ function resolveInsert(lines, { line, insertAfter, section, sort }) {
     });
     if (hits.length !== 1) throw new Error(`insertAfter matched ${hits.length} lines; make it unique`);
     lines.splice(hits[0] + 1, 0, line);
-    return { line, after: lines[hits[0]] };
+    return { line, after: lines[hits[0]], at: hits[0] + 1 };
   }
   if (section) {
     const hIdx = lines.findIndex((l) => headingLevel(l) > 0 && l.toLowerCase().includes(section.toLowerCase()));
@@ -41,7 +41,7 @@ function resolveInsert(lines, { line, insertAfter, section, sort }) {
     for (let i = hIdx + 1; i < end; i++) if (/^\s*([-*+]|\d+\.)\s+/.test(lines[i])) items.push(i);
     if (!items.length) {
       lines.splice(hIdx + 1, 0, '', line);
-      return { line, section: lines[hIdx] };
+      return { line, section: lines[hIdx], at: hIdx + 1 };
     }
     let at = items[items.length - 1] + 1;
     if (sort) {
@@ -50,9 +50,61 @@ function resolveInsert(lines, { line, insertAfter, section, sort }) {
       if (before !== undefined) at = before;
     }
     lines.splice(at, 0, line);
-    return { line, section: lines[hIdx] };
+    return { line, section: lines[hIdx], at };
   }
   throw new Error('provide content, or insertAfter, or section');
+}
+
+// Insert a whole multi-line entry BLOCK (the e2b style: `## [Name](url)` +
+// description + <details> subsections), placed alphabetically among sibling
+// entry headings, or after a named entry.
+function resolveBlockInsert(lines, { block, afterEntry, sort, level }) {
+  const blockLines = block.replace(/\s+$/, '').split('\n');
+  const lvl = Number(level) || (blockLines[0].match(/^(#{1,6})\s/)?.[1].length ?? 0);
+  if (!lvl) throw new Error('cannot tell the block heading level; pass `level`');
+
+  const nameOf = (l) => (l.match(new RegExp(`^#{${lvl}}\\s*\\[([^\\]]+)\\]`)) || [])[1];
+  const newName = nameOf(blockLines[0]);
+  if (!newName) throw new Error('block must start with a heading like "## [Name](url)"');
+  const key = newName.toLowerCase();
+
+  const siblings = [];
+  lines.forEach((l, i) => {
+    if (nameOf(l)) siblings.push(i);
+  });
+  if (!siblings.length) throw new Error('no sibling entry headings found — not a block-format list?');
+
+  // End of the sibling set: the next heading at/above the entry level, else EOF.
+  let end = lines.length;
+  for (let i = siblings[siblings.length - 1] + 1; i < lines.length; i++) {
+    const m = lines[i].match(/^(#{1,6})\s/);
+    if (m && m[1].length <= lvl) {
+      end = i;
+      break;
+    }
+  }
+
+  let at;
+  if (afterEntry) {
+    const hit = siblings.find((i) => lines[i].includes(afterEntry));
+    if (hit === undefined) throw new Error(`afterEntry not found: ${afterEntry}`);
+    const next = siblings.find((i) => i > hit);
+    at = next ?? end;
+  } else if (sort) {
+    const before = siblings.find((i) => nameOf(lines[i]).toLowerCase() > key);
+    at = before ?? end;
+  } else {
+    at = end;
+  }
+
+  // Insert with exactly one blank line of separation on each side.
+  const insert = [];
+  const lead = lines[at - 1] !== undefined && lines[at - 1].trim() !== '';
+  if (lead) insert.push('');
+  insert.push(...blockLines);
+  if (lines[at] !== undefined && lines[at].trim() !== '') insert.push('');
+  lines.splice(at, 0, ...insert);
+  return { block: newName, at: at + (lead ? 1 : 0), len: blockLines.length };
 }
 
 export function createGithubTools({ token, maxPullRequests = 6, planFile = null } = {}) {
@@ -219,7 +271,7 @@ export function createGithubTools({ token, maxPullRequests = 6, planFile = null 
     {
       name: 'github_submit_pr',
       description:
-        'Open a PR that adds exactly ONE line to a list file. Choose ONE placement mode: `insertAfter` (unique substring of the existing line to follow), or `section` (+ optional `sort:true`) to drop it into a heading section, alphabetically if sorted. The tool reads/writes the file itself — you never reproduce it. Forks+branches+commits+PRs. dryRun:true validates only.',
+        'Open a PR that adds ONE entry to a list file. Placement modes: `line` + (`insertAfter` | `section` [+`sort`]) for single-line lists; or `block` (+ `sort` | `afterEntry`) for block-format lists (e2b style: a `## [Name](url)` heading with a <details> body). The tool reads/writes the file itself — you never reproduce it. Forks+branches+commits+PRs. dryRun:true validates only.',
       parameters: {
         type: 'object',
         properties: {
@@ -229,6 +281,9 @@ export function createGithubTools({ token, maxPullRequests = 6, planFile = null 
           insertAfter: { type: 'string', description: 'unique substring of the existing line to insert after' },
           section: { type: 'string', description: 'heading text to insert into (its list)' },
           sort: { type: 'boolean', description: 'insert alphabetically within the section' },
+          block: { type: 'string', description: 'for block-format lists (e2b style): the whole entry block, starting with a heading like "## [Name](url)". Use with sort or afterEntry.' },
+          afterEntry: { type: 'string', description: 'insert the block after this named entry heading (substring match)' },
+          level: { type: 'number', description: "heading level of the block entries (defaults to the block's own first heading)" },
           content: { type: 'string', description: 'advanced: complete new file content (overrides placement)' },
           title: { type: 'string', description: 'pull request title' },
           body: { type: 'string', description: 'pull request body' },
@@ -239,7 +294,7 @@ export function createGithubTools({ token, maxPullRequests = 6, planFile = null 
         required: ['upstream', 'title', 'body'],
         additionalProperties: false,
       },
-      run: async ({ upstream, path = 'README.md', line, insertAfter, section, sort, content, title, body, base, branch, dryRun }) => {
+      run: async ({ upstream, path = 'README.md', line, insertAfter, section, sort, block, afterEntry, level, content, title, body, base, branch, dryRun }) => {
         const me = await whoami();
         const repoMeta = await gh('GET', `/repos/${upstream}`);
         const baseBranch = base || repoMeta.default_branch || 'main';
@@ -248,15 +303,21 @@ export function createGithubTools({ token, maxPullRequests = 6, planFile = null 
         // Build the final file content (never by hand).
         let finalContent = content;
         let placement = null;
+        let preview = null;
         if (!finalContent) {
           const { content: cur } = await fileAt(upstream, path, baseBranch);
           const lines = cur.split('\n');
-          placement = resolveInsert(lines, { line, insertAfter, section, sort });
+          placement = block
+            ? resolveBlockInsert(lines, { block, afterEntry, sort, level })
+            : resolveInsert(lines, { line, insertAfter, section, sort });
+          const at = placement.at ?? 0;
+          const n = placement.len ?? 1;
+          preview = lines.slice(Math.max(0, at - 2), at + n + 2).map((l) => l.slice(0, 160));
           finalContent = lines.join('\n');
         }
 
         if (dryRun) {
-          const entry = { upstream, path, line, insertAfter, section, sort, title, body };
+          const entry = { upstream, path, line, insertAfter, section, sort, block, afterEntry, level, title, body };
           recordProposal(entry);
           return {
             validated: true,
@@ -266,6 +327,7 @@ export function createGithubTools({ token, maxPullRequests = 6, planFile = null 
             base: baseBranch,
             title,
             placement,
+            preview,
             bytes: Buffer.byteLength(finalContent, 'utf8'),
             remaining: maxPullRequests - submitted,
           };

@@ -67,32 +67,44 @@ const dot = await rt.dot('launch', {
   mission: 'Propose correct awesome-list pull requests for MicroDot (proposals only).',
 });
 
-const TARGETS = `TARGETS (for each, propose ONLY if MicroDot genuinely fits a section AND the entry format is clear; otherwise skip and say why):
-1. e2b-dev/awesome-ai-sdks — SDKs/frameworks/libraries for building agents. Find the best-fitting section and match its exact entry format.
-2. e2b-dev/awesome-ai-agents — NOTE: this uses a multi-line block format (## [Name](url) + Category/Description/Features/Links subsections); propose only if a single well-formed block can be built, otherwise skip.
-3. kyrolabs/awesome-langchain — the "Other LLM Frameworks" section; match its exact entry format.
-4. webfuse-com/awesome-autoresearch — autonomous/self-improving agents; propose only if a section genuinely fits.
-5. WenyuChiou/awesome-agentic-ai-zh — match its exact (trilingual) format.
-6. bradAGI/awesome-cli-coding-agents — CLI agent harnesses; MicroDot is a CLI agent but is NOT a coding agent, so propose only if the scope truly fits, else skip.`;
+const TARGETS = `TARGETS — these are BLOCK-format lists, so use the \`block\` placement mode (a full "## [Name](url)" entry), NOT line/section:
+1. e2b-dev/awesome-ai-sdks — propose with block + sort:true. Keep it to the heading, one-line description, and a <details> with just a "### Links" subsection.
+2. e2b-dev/awesome-ai-agents — propose with block + sort:true. Include "### Category", "### Description" (2-3 bullets) and "### Links" subsections.
 
-const task = `Your job: propose pull requests that add MicroDot to curated "awesome" lists. You are proposing ONLY — github_submit_pr is forced to validate, so nothing is submitted.
+BLOCK template (adapt per list; they are alphabetically sorted by project name):
+## [MicroDot](https://github.com/OldComputerGuy/microDots)
+
+A tiny, self-hosted AI agent with its own browser tab; writes its own tools, spawns sub-agents, one shared Chromium, plain-file state. MIT.
+
+<details>
+
+### Category
+General purpose, Build your own
+
+### Description
+
+- **Self-extending**: writes and runs its own tools in a sandbox.
+- **Sub-agents**: spawns parallel workers whose findings roll back up.
+- **Small footprint**: one process, one shared Chromium, plain-file state.
+
+### Links
+- [GitHub](https://github.com/OldComputerGuy/microDots)
+
+</details>`;
+
+const task = `Your job: propose pull requests that add MicroDot to the e2b "awesome" lists. You are proposing ONLY — github_submit_pr is forced to validate, so nothing is submitted.
 
 MicroDot: ${REPO} — a tiny, self-hosted AI agent with its own browser tab (one process, one shared Chromium, a tab per agent). It writes its own tools (sandboxed), spawns sub-agents, and keeps state in plain files. MIT, plain Node. Do NOT research MicroDot — everything you need is here.
 
-Use ONLY these tools: github_find_lines, github_read_file (small files only), github_submit_pr. Do NOT create tools. Do NOT read your space. Do NOT use web_search.
-
-Entry line (adapt to each list's punctuation, link style and format):
-- [MicroDot](${REPO}) - A tiny, self-hosted AI agent with its own browser tab; writes its own tools, spawns sub-agents, one shared Chromium, plain-file state. MIT.
+Use ONLY these tools: github_find_lines, github_submit_pr. Do NOT create tools. Do NOT read your space. Do NOT use web_search.
 
 ${TARGETS}
 
 Per target:
 1. github_find_lines for "microdot" to confirm it isn't already listed.
-2. github_find_lines for the section heading to get its exact text.
-3. github_find_lines to see 2-3 existing entries and copy their exact format.
-4. github_submit_pr with dryRun:true — use section + sort (or insertAfter a unique entry), your adapted line, title "Add MicroDot", and a 1-2 sentence body ending with the repo URL.
+2. github_submit_pr once, with { upstream, block, sort:true, title:"Add MicroDot", body:"Adds MicroDot, a tiny self-hosted AI agent (plain Node, MIT). Repo: ${REPO}", dryRun:true }.
 
-Be efficient: propose for the lists that genuinely fit, then stop. Finish with each proposed repo + section, and each skipped repo with a one-line reason.`;
+Then stop and finish with the two placements (the tool returns a preview showing the lines around the insertion — quote it).`;
 
 const text = await dot.run(task, {
   onToken: (t) => process.stdout.write(t),
