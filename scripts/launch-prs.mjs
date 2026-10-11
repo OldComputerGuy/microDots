@@ -52,7 +52,7 @@ if (mode === 'apply') {
 }
 
 // --- plan: the Dot researches and PROPOSES (downloads nothing, opens nothing)
-const rt = await createRuntime({ browser: 'off', compact: true, allowSpawn: true, maxSteps: 45 });
+const rt = await createRuntime({ browser: 'off', compact: true, allowSpawn: true, maxSteps: 24 });
 for (const t of tools) {
   if (t.name === 'github_submit_pr') {
     // Hard guarantee: plan mode can only ever validate.
@@ -63,29 +63,34 @@ for (const t of tools) {
 }
 
 const dot = await rt.dot('launch', {
-  type: 'researcher',
-  mission: 'Propose correct awesome-list pull requests for MicroDot (proposals only — nobody submits yet).',
+  type: 'default',
+  mission: 'Propose correct awesome-list pull requests for MicroDot (proposals only).',
 });
 
-const task = `Your job: research real, actively-maintained "awesome" lists and PROPOSE correct pull requests that would add MicroDot. You are proposing only — github_submit_pr is forced to validate, so nothing is submitted.
+const TARGETS = `TARGETS (skip any whose format is unclear or that enforces a quality bar MicroDot clearly cannot meet — say why):
+1. Jenqyang/Awesome-AI-Agents — use the "Frameworks" section. Match the exact entry format there (entries end with a GitHub stars badge). Insert alphabetically: section:"Frameworks", sort:true.
+2. slavakurilyak/awesome-ai-agents — find the best agent/framework section; match its exact entry format.
+3. caramaschiHG/awesome-ai-agents-2026 — find the best section; match its exact format.
+4. steven2358/awesome-generative-ai — use "### Autonomous agents". Entries go at the BOTTOM of the category and end with the #opensource tag (section:"Autonomous agents", sort:false). Flag that they prefer projects with 1000+ followers, which MicroDot does not meet yet.`;
 
-What MicroDot is: ${REPO} — a tiny, self-hosted AI agent with its own browser tab. One process, one shared Chromium, one tab per agent. It writes its own tools (sandboxed), spawns sub-agents, keeps state in plain files. MIT, plain Node.
+const task = `Your job: propose pull requests that add MicroDot to curated "awesome" lists. You are proposing ONLY — github_submit_pr is forced to validate, so nothing is submitted.
 
-Entry line (adapt link/punctuation style to match each list):
-- [MicroDot](${REPO}) - A tiny self-hosted AI agent with its own browser tab; writes its own tools, spawns sub-agents, one shared Chromium, plain-file state. MIT.
+MicroDot: ${REPO} — a tiny, self-hosted AI agent with its own browser tab (one process, one shared Chromium, a tab per agent). It writes its own tools (sandboxed), spawns sub-agents, and keeps state in plain files. MIT, plain Node. Do NOT research MicroDot — everything you need is here.
 
-Method:
-1. github_search_repos with several queries: "awesome ai agents", "awesome llm agents", "awesome autonomous agents", "awesome ai tools". Collect the real, popular lists.
-2. For each promising candidate (aim for ${MAX}):
-   a. Confirm it welcomes contributions (github_list_dir / github_find_lines for CONTRIBUTING or a Contributing section). Skip lists that don't accept additions.
-   b. github_find_lines for "microdot" to confirm it isn't already listed.
-   c. github_find_lines for "##"/"###" to find the best section for an agent/framework.
-   d. Decide placement: alphabetical section -> section + sort:true; otherwise insertAfter a unique existing entry line you saw.
-   e. Call github_submit_pr with dryRun:true (the tool records your proposal and validates the anchor/section against the live file).
-3. Propose ONLY where the format is clearly correct and entries are welcome. When unsure, SKIP.
-4. Finish with a short list: each proposed repo + section, and each skipped repo with a one-line reason.
+Use ONLY these tools: github_find_lines, github_read_file (small files only), github_submit_pr. Do NOT create tools. Do NOT read your space. Do NOT use web_search.
 
-Be efficient: use the github_* tools only; do NOT create new tools; submit proposals rather than exploring endlessly.`;
+Entry line (adapt to each list's punctuation, link style and format):
+- [MicroDot](${REPO}) - A tiny, self-hosted AI agent with its own browser tab; writes its own tools, spawns sub-agents, one shared Chromium, plain-file state. MIT.
+
+${TARGETS}
+
+Per target:
+1. github_find_lines for "microdot" to confirm it isn't already listed.
+2. github_find_lines for the section heading to get its exact text.
+3. github_find_lines to see 2-3 existing entries and copy their exact format.
+4. github_submit_pr with dryRun:true — use section + sort (or insertAfter a unique entry), your adapted line, title "Add MicroDot", and a 1-2 sentence body ending with the repo URL.
+
+Be efficient: propose for the lists that genuinely fit, then stop. Finish with each proposed repo + section, and each skipped repo with a one-line reason.`;
 
 const text = await dot.run(task, {
   onToken: (t) => process.stdout.write(t),
