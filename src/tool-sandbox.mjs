@@ -9,7 +9,7 @@ import { resolve } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { spaceDir } from './space.mjs';
 
-const SENTINEL = '@@MINIDOT@@';
+const SENTINEL = '@@MICRODOT@@';
 const IS_WIN = process.platform === 'win32';
 const IS_LINUX = process.platform === 'linux';
 const distro = () => process.env.MICRODOT_WSL_DISTRO || 'Ubuntu-24.04';

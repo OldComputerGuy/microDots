@@ -16,7 +16,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 
-const SENTINEL = '@@MINIDOT@@';
+const SENTINEL = '@@MICRODOT@@';
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 const pending = new Map();
 let hid = 0;
