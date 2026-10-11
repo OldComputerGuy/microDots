@@ -82,7 +82,7 @@ function normalise(result) {
 const RATE_LIMIT_RE = /\b429\b|rate.?limit|too many requests|overloaded|quota|temporarily unavailable/i;
 
 async function callTool(name, args, timeoutMs, attempt = 0) {
-  const apiKey = (process.env.PARALLEL_API_KEY || '').trim() || undefined;
+  const apiKey = (process.env.PARALLEL_API_KEY || process.env.PARALLEL_KEY || '').trim() || undefined;
   const client = new Client({ name: 'microdot', version: '0.1.0' });
   const transport = new StreamableHTTPClientTransport(
     new URL(ENDPOINT),
