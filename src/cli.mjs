@@ -13,6 +13,7 @@ import { listSkills } from './skills.mjs';
 import { ensureSpace, readMission, writeMission, shotsDir, getSpaceType, setSpaceType } from './space.mjs';
 import { listWorkerTypes, readWorkerType } from './worker-types.mjs';
 import { newChatId, saveChat, listChats, loadChat } from './chats.mjs';
+import { ensureProject } from './home.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -51,6 +52,7 @@ const SYSTEM_BASE = `You are MicroDot, a small autonomous agent with your own br
 - When your task is complete, answer the user directly in a short summary.`;
 
 // Each worker has its own space: spaces/<worker_name>/ (mission.md + files).
+ensureProject();
 const spacePath = ensureSpace(agentName);
 const mission = readMission(agentName).trim();
 

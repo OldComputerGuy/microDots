@@ -44,26 +44,40 @@ Watch the tabs: set `MICRODOT_HEADLESS=false` in `.env` **before first launch** 
 | `/help`, `/exit` | |
 
 ## Spaces & missions
-Every worker gets its **own space**, named after it:
+Every worker gets its **own space**, named after it, inside the project layer:
 
 ```
-spaces/
-  <worker_name>/
-    mission.md      the Dot's standing objective (injected into the system prompt)
-    shots/          screenshots
-    <other files>   notes, documents, downloads the worker produces
+<project>/.microdot/
+  .gitignore            "*"  (self-ignoring)
+  spaces/
+    <worker_name>/
+      mission.md        the Dot's standing objective (injected into the system prompt)
+      shots/            screenshots
+      worker_type       the chosen worker type
+      <other files>     notes, documents, downloads the worker produces
+  chats/
+  tools/ skills/ worker-types/    project-specific additions
 ```
 
-- The space is also the **sandbox root**, so a tool's `ctx.fs` writes land in `spaces/<worker>/` — enforced, not convention.
+- The space is also the **sandbox root**, so a tool's `ctx.fs` writes land in `<project>/.microdot/spaces/<worker>/` — enforced, not convention.
 - `mission.md` is created on first run (seed it via `MICRODOT_MISSION`) and shown to the worker each session; edit it directly or with `/mission <text>`.
-- The chosen **worker type** is recorded in `spaces/<worker>/worker_type` so it persists.
-- `/new alpha` makes a new worker with its own `spaces/alpha/`. Set `MICRODOT_SPACE=research` to point a worker at a specific (possibly shared) space.
+- `/new alpha` makes a new worker with its own space. Set `MICRODOT_SPACE=research` to point a worker at a specific (possibly shared) space.
+
+## Files & layers
+MicroDot has two layers (like Codex/OpenCode keying to a project):
+
+- **Engine** — the install dir (where the code lives, override with `MICRODOT_HOME`). Holds the **shared Chromium profile**, the **shipped worker-types/skills/tools** (e.g. `default`, `researcher`, `nasdaq100_momentum`), and the engine-level `tools-custom/`.
+- **Project** — `<launch dir>/.microdot` (the folder you start MicroDot from). Holds **chats**, **spaces**, and any **project-specific tools/skills/worker-types**.
+
+Resolution is **engine + project**, project overriding by name; **new** tools/skills/worker-types are written to the **project**. So a project can *add* to the engine set but never loses the defaults. The Chromium profile stays engine-level (one shared browser, one CDP port).
+
+`MICRODOT_TOOLS_DIR` / `MICRODOT_SKILLS_DIR` / `MICRODOT_WORKER_TYPES_DIR` / `MICRODOT_SANDBOX_DIR` / `MICRODOT_CHATS_DIR` act as explicit single-dir overrides when set.
 
 ## Worker types
-A **worker type** is a markdown file describing *how a worker behaves* (persona, method, rules). It lives in `./worker-types/<name>.md` and is injected into the worker's system prompt.
+A **worker type** is a markdown file describing *how a worker behaves* (persona, method, rules). Engine types live in `<install>/worker-types/<name>.md`; project ones in `<project>/.microdot/worker-types/`. It's injected into the worker's system prompt.
 
-- **Handwritten:** just drop a file in `./worker-types/`. Shipped: `default`, `researcher`.
-- **On the fly:** the worker can author them with `save_worker_type(name, description, content)` (`list_worker_types` / `read_worker_type` / `delete_worker_type` too).
+- **Handwritten:** drop a file in either layer. Shipped: `default`, `researcher`.
+- **On the fly:** the worker can author them with `save_worker_type(name, description, content)` (`list_worker_types` / `read_worker_type` / `delete_worker_type` too) — written to the project.
 - **Assigned at creation:** `/new <name> <type>` — **no type stated → `default`**. Change it later with `/type <name>`.
 
 ## Web search
@@ -107,7 +121,7 @@ Set `MICRODOT_TOOL_SANDBOX` to anything other than `none` to run self-authored t
 - **Confinement (`MICRODOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` — the system is mounted **read-only** and only the worker's space is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed (Windows/WSL: `wsl -- sudo apt-get install -y bubblewrap`; Linux: `apt install bubblewrap`). Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed. If `bubblewrap` is missing, MicroDot logs a warning and **falls back to the unconfined worker** — best-effort confinement, never a hard failure.
 
 Either way:
-- `ctx.fs` is jailed to the worker's space (`spaces/<worker>/`, or `MICRODOT_SANDBOX_DIR`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (the shared Chromium / OS viewer).
+- `ctx.fs` is jailed to the worker's space (`<project>/.microdot/spaces/<worker>/`, or `MICRODOT_SANDBOX_DIR`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (the shared Chromium / OS viewer).
 - Tools get `ctx.browser.{open,text,url,screenshot,click,type,close}` + `ctx.fs` instead of the in-process `page()`/`host`/`import()`.
 
 > ⚠️ With `bwrap` on, the system is read-only and only the workspace is writable; without it, WSL mode is functional-but-loose (default user, interop, `/mnt/c`). Fully closing interop/reads needs a dedicated distro.
@@ -167,11 +181,12 @@ Applies to the root agent **and every sub-agent**. Each compaction costs one ext
 | `MICRODOT_SHOT_SCALE` | `1` | device pixel ratio (`2` = crisper, larger images; isolate mode) |
 | `MICRODOT_SHOT_FULLPAGE` | `false` | `true` = capture the whole page, not just the viewport |
 | `MICRODOT_SHOT_KEEP` | `10` | keep only the newest N screenshots; older ones are deleted |
-| `MICRODOT_TOOLS_DIR` | `tools-custom` | folder for self-authored tools |
-| `MICRODOT_CHATS_DIR` | `.microdot/chats` | where chats are saved, relative to the launch dir |
-| `MICRODOT_LAUNCH_DIR` | *(set by launcher)* | the folder you launched from; chats are keyed to it |
-| `MICRODOT_SKILLS_DIR` | `skills` | folder for saved skills (recipes) |
-| `MICRODOT_WORKER_TYPES_DIR` | `worker-types` | folder for worker-type behaviour files |
+| `MICRODOT_HOME` | *(install dir)* | engine layer: where code + shipped defaults + Chromium profile live |
+| `MICRODOT_TOOLS_DIR` | *(layered)* | explicit single dir for tools (else engine + project) |
+| `MICRODOT_CHATS_DIR` | `.microdot/chats` | where chats are saved (relative to the launch dir) |
+| `MICRODOT_LAUNCH_DIR` | *(set by launcher)* | the folder you launched from (project layer) |
+| `MICRODOT_SKILLS_DIR` | *(layered)* | explicit single dir for skills (else engine + project) |
+| `MICRODOT_WORKER_TYPES_DIR` | *(layered)* | explicit single dir for worker types (else engine + project) |
 | `MICRODOT_WORKER_TYPE` | *(space)* | worker type for a new worker (else the space's, else `default`) |
 | `MICRODOT_APPROVE_CREATE_TOOL` | `true` | ask before saving a tool whose code uses risky capabilities (child_process, require, direct fs/fetch, absolute paths, …) |
 | `MICRODOT_ALLOW_SPAWN` | `false` | enable the `spawn_subagent` tool |

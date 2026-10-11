@@ -1,21 +1,25 @@
 // Custom tools: MicroDot can author new tools that it (and future sessions) can call.
-// Each tool is a standalone ES module written to ./tools-custom/<name>.mjs:
+// Each tool is a standalone ES module:
 //   export const definition = { type:'function', function:{ name, description, parameters } };
+//   export const code = "...";          // shipped to the sandbox
 //   export async function run(args, ctx) { ... return <json>; }
-// The code runs in this Node process (full local privileges), so treat it as code.
-import { readdirSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+//
+// Layered: engine tools (<install>/tools-custom) are shared; project tools
+// (<project>/.microdot/tools) override them by name. New tools are written to
+// the project layer.
+import { readdirSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { layerDirs, writeDir } from './home.mjs';
 
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const dirs = () => layerDirs('MICRODOT_TOOLS_DIR', 'tools-custom', 'tools');
 
-export const customDir = () => resolve(process.cwd(), process.env.MICRODOT_TOOLS_DIR ?? 'tools-custom');
-
-export function toolFile(dir, name) {
+export const customDir = () => writeDir('MICRODOT_TOOLS_DIR', 'tools-custom', 'tools');
+export function toolFile(name, dir = customDir()) {
   return join(dir, `${name}.mjs`);
 }
 
-// Validate the name and that it does not collide with a built-in tool.
 export function validateName(name, reserved) {
   if (!NAME_RE.test(name)) throw new Error('invalid tool name: use letters, digits or underscore (start with a letter/underscore)');
   if (name === 'create_tool') throw new Error('"create_tool" is reserved');
@@ -50,19 +54,11 @@ export function scanToolCode(code) {
   return RISK_PATTERNS.filter(([, re]) => re.test(s)).map(([label]) => label);
 }
 
-function normaliseParameters(parameters) {
-  if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) {
-    throw new Error('parameters must be a JSON Schema object, e.g. { type:"object", properties:{...} }');
-  }
-  if (!parameters.type) return { type: 'object', ...parameters };
-  return parameters;
-}
-
 function sourceFor({ name, description, parameters, code }) {
   const definition = { type: 'function', function: { name, description, parameters } };
   return [
     `// MicroDot custom tool "${name}" - auto-generated, safe to edit or delete.`,
-    `// run() is used by the in-process backend; code is shipped to the WSL sandbox.`,
+    `// run() is used by the in-process backend; code is shipped to the sandbox.`,
     `export const definition = ${JSON.stringify(definition, null, 2)};`,
     `export const code = ${JSON.stringify(code)};`,
     ``,
@@ -73,45 +69,66 @@ function sourceFor({ name, description, parameters, code }) {
   ].join('\n');
 }
 
-export function saveTool(dir, spec) {
+export function saveTool(spec, dir = customDir()) {
   mkdirSync(dir, { recursive: true });
-  const file = toolFile(dir, spec.name);
+  const file = toolFile(spec.name, dir);
   writeFileSync(file, sourceFor(spec));
   return file;
 }
 
-export function deleteTool(dir, name) {
-  const file = toolFile(dir, name);
-  rmSync(file, { force: true });
-  return file;
+export function deleteTool(name) {
+  let removed = null;
+  for (const dir of dirs()) {
+    const file = toolFile(name, dir);
+    if (existsSync(file)) {
+      rmSync(file, { force: true });
+      removed = file;
+    }
+  }
+  return removed;
 }
 
-export async function importTool(dir, name) {
-  const file = toolFile(dir, name);
-  const url = `${pathToFileURL(file).href}?v=${Date.now()}`; // bust the module cache so edits take effect
+async function importFile(file) {
+  const url = `${pathToFileURL(file).href}?v=${Date.now()}`;
   const mod = await import(url);
   if (typeof mod.run !== 'function' || !mod.definition?.function) {
-    throw new Error(`tool "${name}" must export run() and definition`);
+    throw new Error(`tool at ${file} must export run() and definition`);
   }
   return { definition: mod.definition, run: mod.run, code: typeof mod.code === 'string' ? mod.code : null };
 }
 
-// Load every saved custom tool. Returns Map<name, { definition, run, code }>.
-export async function loadCustomTools(dir = customDir()) {
-  const out = new Map();
-  let files = [];
-  try {
-    files = readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.mjs'));
-  } catch {
-    return out; // no folder yet
+// Search layers project-first.
+function findToolFile(name) {
+  for (const dir of [...dirs()].reverse()) {
+    const file = toolFile(name, dir);
+    if (existsSync(file)) return file;
   }
-  for (const f of files) {
-    const name = f.replace(/\.mjs$/i, '');
+  return null;
+}
+
+export async function importTool(name) {
+  const file = findToolFile(name);
+  if (!file) throw new Error(`tool "${name}" not found`);
+  return importFile(file);
+}
+
+// Load every saved custom tool across layers (project overrides engine).
+export async function loadCustomTools() {
+  const out = new Map();
+  for (const dir of dirs()) {
+    let files = [];
     try {
-      const { definition, run, code } = await importTool(dir, name);
-      out.set(definition.function.name ?? name, { definition, run, code });
-    } catch (e) {
-      console.error(`MicroDot: could not load custom tool ${f}: ${e?.message ?? e}`);
+      files = readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.mjs'));
+    } catch {
+      continue;
+    }
+    for (const f of files) {
+      try {
+        const { definition, run, code } = await importFile(join(dir, f));
+        out.set(definition.function.name ?? f.replace(/\.mjs$/i, ''), { definition, run, code });
+      } catch (e) {
+        console.error(`MicroDot: could not load custom tool ${f}: ${e?.message ?? e}`);
+      }
     }
   }
   return out;

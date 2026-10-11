@@ -6,6 +6,7 @@ import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { engineDir } from './home.mjs';
 
 const cdpUrl = () => process.env.MICRODOT_CDP_URL ?? 'http://127.0.0.1:9222';
 
@@ -32,7 +33,7 @@ async function ensureSharedChromium(headless) {
   const url = cdpUrl();
   if (await cdpReady(url)) return;
   const exe = chromium.executablePath();
-  const userDir = resolve(process.cwd(), '.chromium-profile');
+  const userDir = resolve(engineDir(), '.chromium-profile');
   mkdirSync(userDir, { recursive: true });
   const port = new URL(url).port || '9222';
   const vp = envViewport();

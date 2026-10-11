@@ -2,15 +2,13 @@
 // One JSON file per chat in ./chats/<id>.json.
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
+import { projectDir } from './home.mjs';
 
-// Chats are stored per *project* — the directory you launched MicroDot from —
-// in <launchDir>/.microdot/chats (like Codex/OpenCode keying sessions to a cwd).
-const launchDir = () => process.env.MICRODOT_LAUNCH_DIR || process.cwd();
-
+// Chats live in the project layer: <project>/.microdot/chats.
 export const chatsDir = () => {
-  const explicit = process.env.MICRODOT_CHATS_DIR;
-  if (explicit) return resolve(launchDir(), explicit);
-  return resolve(launchDir(), '.microdot', 'chats');
+  const explicit = (process.env.MICRODOT_CHATS_DIR || '').trim();
+  if (explicit) return resolve(process.cwd(), explicit);
+  return resolve(projectDir(), 'chats');
 };
 const chatFile = (dir, id) => join(dir, `${id}.json`);
 

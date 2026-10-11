@@ -8,12 +8,13 @@ import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
 import { mkdirSync } from 'node:fs';
 import { spaceDir } from './space.mjs';
+import { engineDir } from './home.mjs';
 
 const SENTINEL = '@@MICRODOT@@';
 const IS_WIN = process.platform === 'win32';
 const IS_LINUX = process.platform === 'linux';
 const distro = () => process.env.MICRODOT_WSL_DISTRO || 'Ubuntu-24.04';
-const workerPath = () => resolve(process.cwd(), 'src/sandbox/worker.mjs');
+const workerPath = () => resolve(engineDir(), 'src/sandbox/worker.mjs');
 
 // Host path <-> sandbox (Linux) path. Identity on Linux; drive-letter mapping
 // to /mnt/<drive> on Windows.

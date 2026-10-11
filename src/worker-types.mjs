@@ -1,40 +1,51 @@
 // Worker types: named markdown files describing how a worker behaves.
-// They can be handwritten (drop a file in ./worker-types/) or created on the fly
-// (save_worker_type). A worker is created with a type; the markdown is injected
-// into its system prompt.
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+// Layered: engine types (<install>/worker-types, the shipped defaults) are
+// shared; project types (<project>/.microdot/worker-types) override. New ones
+// are written to the project layer.
+import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { layerDirs, writeDir } from './home.mjs';
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+const dirs = () => layerDirs('MICRODOT_WORKER_TYPES_DIR', 'worker-types', 'worker-types');
 
-export const workerTypesDir = () => resolve(process.cwd(), process.env.MICRODOT_WORKER_TYPES_DIR ?? 'worker-types');
+export const workerTypesDir = () => writeDir('MICRODOT_WORKER_TYPES_DIR', 'worker-types', 'worker-types');
 const typeFile = (dir, name) => join(dir, `${name}.md`);
 
-export function listWorkerTypes(dir = workerTypesDir()) {
-  let files = [];
-  try {
-    files = readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.md'));
-  } catch {
-    return [];
-  }
-  return files.map((f) => {
-    const name = f.replace(/\.md$/i, '');
-    let first = '';
+export function listWorkerTypes() {
+  const out = new Map();
+  for (const dir of dirs()) {
+    let files = [];
     try {
-      first = readFileSync(join(dir, f), 'utf8').split('\n').find((l) => l.trim()) || '';
+      files = readdirSync(dir).filter((f) => f.toLowerCase().endsWith('.md'));
     } catch {
-      /* ignore */
+      continue;
     }
-    return { name, description: first.replace(/^#+\s*/, '').trim(), file: join(dir, f) };
-  });
+    for (const f of files) {
+      const name = f.replace(/\.md$/i, '');
+      let first = '';
+      try {
+        first = readFileSync(join(dir, f), 'utf8').split('\n').find((l) => l.trim()) || '';
+      } catch {
+        /* ignore */
+      }
+      out.set(name, { name, description: first.replace(/^#+\s*/, '').trim(), file: join(dir, f) });
+    }
+  }
+  return [...out.values()];
 }
 
-export function readWorkerType(name, dir = workerTypesDir()) {
-  try {
-    return readFileSync(typeFile(dir, name), 'utf8');
-  } catch {
-    return '';
+function findTypeFile(name) {
+  for (const dir of [...dirs()].reverse()) {
+    const file = typeFile(dir, name);
+    if (existsSync(file)) return file;
   }
+  return null;
+}
+
+export function readWorkerType(name) {
+  const file = findTypeFile(name);
+  return file ? readFileSync(file, 'utf8') : '';
 }
 
 export function saveWorkerType({ name, description, content }, dir = workerTypesDir()) {
@@ -47,8 +58,14 @@ export function saveWorkerType({ name, description, content }, dir = workerTypes
   return file;
 }
 
-export function deleteWorkerType(name, dir = workerTypesDir()) {
-  const file = typeFile(dir, name);
-  rmSync(file, { force: true });
-  return file;
+export function deleteWorkerType(name) {
+  let removed = null;
+  for (const dir of dirs()) {
+    const file = typeFile(dir, name);
+    if (existsSync(file)) {
+      rmSync(file, { force: true });
+      removed = file;
+    }
+  }
+  return removed;
 }

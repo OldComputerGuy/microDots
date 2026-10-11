@@ -385,7 +385,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
   const backendName = (code) => (useSandbox && code ? (process.platform === 'win32' ? 'wsl' : 'sandbox') : 'in-process');
 
   // Custom tools already on disk (name -> { definition, run, code }).
-  const custom = await loadCustomTools(dir);
+  const custom = await loadCustomTools();
 
   // Live tool list handed to the model; mutated when new tools are created.
   const definitions = [...BUILTINS, ...(delegate ? [SPAWN_DEF, SPAWN_MANY_DEF] : []), ...[...custom.values()].map((t) => t.definition)];
@@ -449,13 +449,13 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
       ? args.parameters
       : { type: 'object', ...(args.parameters ?? {}) };
 
-    const file = saveTool(dir, {
+    const file = saveTool({
       name,
       description: String(args.description),
       parameters,
       code: args.code,
     });
-    const { definition, run, code } = await importTool(dir, name);
+    const { definition, run, code } = await importTool(name);
 
     const existing = custom.get(name);
     if (existing) {
@@ -557,7 +557,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
         const i = definitions.indexOf(entry.definition);
         if (i >= 0) definitions.splice(i, 1);
         custom.delete(name);
-        const file = deleteTool(dir, name);
+        const file = deleteTool(name);
         return { deleted: name, file };
       }
       case 'http_get': {
@@ -620,5 +620,5 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
     }
   }
 
-  return { definitions, execute, customDir: dir, toolFile: (n) => toolFile(dir, n) };
+  return { definitions, execute, customDir: dir, toolFile: (n) => toolFile(n) };
 }

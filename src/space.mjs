@@ -8,16 +8,18 @@
 // The space is also the sandbox root, so tool file writes land here (enforced).
 import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { projectDir } from './home.mjs';
 
 export function spaceName(agentId = 'main') {
   return (process.env.MICRODOT_SPACE || agentId || 'main').trim() || 'main';
 }
 
-// MICRODOT_SANDBOX_DIR is an explicit override; otherwise spaces/<worker>.
+// Spaces live in the project layer: <project>/.microdot/spaces/<worker>.
+// MICRODOT_SANDBOX_DIR is an explicit override.
 export function spaceDir(agentId = 'main') {
   const override = (process.env.MICRODOT_SANDBOX_DIR || '').trim();
   if (override) return resolve(process.cwd(), override);
-  return resolve(process.cwd(), 'spaces', spaceName(agentId));
+  return resolve(projectDir(), 'spaces', spaceName(agentId));
 }
 
 export function shotsDir(agentId = 'main') {
