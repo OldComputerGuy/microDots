@@ -8,6 +8,7 @@ import {
   toolFile,
   validateName,
   checkCode,
+  scanToolCode,
   saveTool,
   deleteTool,
   importTool,
@@ -433,10 +434,15 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
     if (!args?.description) throw new Error('description is required');
     checkCode(args?.code);
 
-    // Optional human approval before a new tool is saved/registered.
-    if ((process.env.MINIDOT_APPROVE_CREATE_TOOL ?? 'true') !== 'false' && confirm) {
-      const ok = await confirm(`create tool "${name}"`, args.code);
-      if (!ok) return { declined: true, name, note: 'The user declined to create this tool.' };
+    // Pattern-gated approval: only ask when the code touches risky capabilities.
+    const risks = scanToolCode(args.code);
+    if ((process.env.MINIDOT_APPROVE_CREATE_TOOL ?? 'true') !== 'false' && risks.length) {
+      if (confirm) {
+        const ok = await confirm(`create tool "${name}" — risky: ${risks.join(', ')}`, args.code);
+        if (!ok) return { declined: true, name, note: 'The user declined to create this tool.' };
+      } else {
+        console.log(`  ! "${name}" uses risky code (${risks.join(', ')}) — auto-approved (non-interactive)`);
+      }
     }
 
     const parameters = args.parameters?.type

@@ -83,6 +83,7 @@ MiniDot can **write its own tools** and use them immediately.
 - The tool is registered live (callable in the **same** turn) and saved to `./tools-custom/<name>.mjs`.
 - Saved tools **auto-load** at startup, so they persist across sessions.
 - Manage them with **`list_tools`** (built-ins + your custom tools) and **`delete_tool`** (removes the tool and its file).
+- **Approval is pattern-gated:** harmless tools are saved silently; a tool whose code touches risky capabilities (`child_process`, `require`, dynamic `import`, direct `fs`/`fetch`, absolute paths, `process`, `eval`) prompts for y/N first. Disable with `MINIDOT_APPROVE_CREATE_TOOL=false`.
 - `ctx` gives `page()` (your browser tab), `agentId`, `clip`, `textLimit`, `host`; you can also `await import('...')` Node modules and use global `fetch`.
 
 Example tool file `tools-custom/slugify.mjs`:
@@ -158,7 +159,7 @@ Applies to the root agent **and every sub-agent**. Each compaction costs one ext
 | `MINIDOT_SKILLS_DIR` | `skills` | folder for saved skills (recipes) |
 | `MINIDOT_WORKER_TYPES_DIR` | `worker-types` | folder for worker-type behaviour files |
 | `MINIDOT_WORKER_TYPE` | *(space)* | worker type for a new worker (else the space's, else `default`) |
-| `MINIDOT_APPROVE_CREATE_TOOL` | `true` | ask before saving a new tool (interactive) |
+| `MINIDOT_APPROVE_CREATE_TOOL` | `true` | ask before saving a tool whose code uses risky capabilities (child_process, require, direct fs/fetch, absolute paths, …) |
 | `MINIDOT_ALLOW_SPAWN` | `false` | enable the `spawn_subagent` tool |
 | `MINIDOT_MAX_DEPTH` | `3` | max sub-agent nesting depth |
 | `MINIDOT_MAX_AGENTS` | `16` | max agents per run (whole tree) |

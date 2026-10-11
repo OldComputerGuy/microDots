@@ -30,6 +30,26 @@ export function checkCode(code) {
   new AsyncFunction('args', 'ctx', code);
 }
 
+// Static scan for capabilities a tool shouldn't quietly exercise (reads keys,
+// network, code exec, escaping the space). Used to gate approval.
+const RISK_PATTERNS = [
+  ['child_process', /child_process/],
+  ['require()', /\brequire\s*\(/],
+  ['dynamic import', /\bimport\s*\(/],
+  ['process', /\bprocess\b/],
+  ['direct fs', /node:fs\b|(?<![.\w])fs\.(readFile|writeFile|readdir|rm|unlink|mkdir|stat|appendFile|cp|rename)/],
+  ['direct fetch', /(?<![.\w])fetch\s*\(/],
+  ['network module', /node:(net|http|https|dns|tls)\b/],
+  ['absolute path', /["']\/(?!\/)/],
+  ['path traversal', /\.\.\//],
+  ['eval/Function', /\beval\s*\(|new\s+Function/],
+];
+
+export function scanToolCode(code) {
+  const s = String(code || '');
+  return RISK_PATTERNS.filter(([, re]) => re.test(s)).map(([label]) => label);
+}
+
 function normaliseParameters(parameters) {
   if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) {
     throw new Error('parameters must be a JSON Schema object, e.g. { type:"object", properties:{...} }');
