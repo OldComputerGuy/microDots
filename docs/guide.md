@@ -69,6 +69,9 @@ A **worker type** is a markdown file describing *how a worker behaves* (persona,
 ## Web search
 MicroDot has a **`web_search`** tool backed by **Parallel** — the same provider OpenDots uses (`https://search.parallel.ai/mcp`). No API key is needed for light use; set `PARALLEL_API_KEY` for a higher authenticated tier.
 
+- The anonymous tier is **rate-limited** and search is **metered (~$1 / 1000 searches)**. Results are **cached in-process**, so repeated identical queries are free; `429`/rate-limit responses are retried with backoff, and if they persist you get a clear error suggesting `PARALLEL_API_KEY`.
+- Cap searches per session with `MICRODOT_SEARCH_MAX` (0 = unlimited) to keep cost bounded.
+
 - `web_search(query, objective?)` → `{ query, count, results: [{ title, url, publish_date, excerpt }] }` — for current information, news, docs, comparisons.
 - `web_fetch(urls, objective?)` → the extracted content of specific pages — when you need exact wording, quotes, or full-page analysis.
 - Both are **builtins**, so they run on the host even in sandbox mode. Prefer them over opening a search engine in the browser (which gets blocked).
@@ -180,7 +183,8 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_MAX_AGENTS` | `16` | max agents per run (whole tree) |
 | `MICRODOT_MAX_CONCURRENT` | `8` | max sub-agents running at once |
 | `MICRODOT_DEBUG` | `false` | keep sub-agent spaces + verbose logs |
-| `PARALLEL_API_KEY` | — | optional Parallel search key |
+| `PARALLEL_API_KEY` | - | optional Parallel search key |
+| `MICRODOT_SEARCH_MAX` | `0` | cap `web_search` calls per session (0 = unlimited); guards Parallel cost |
 | `MICRODOT_TOOL_SANDBOX` | `auto` | `auto` / `none` / `wsl` / `sandbox` |
 | `MICRODOT_SANDBOX_DIR` | — | explicit sandbox root override |
 | `MICRODOT_SPACE` | worker name | space to use |
