@@ -3,7 +3,15 @@
 import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 
-export const chatsDir = () => resolve(process.cwd(), process.env.MICRODOT_CHATS_DIR ?? 'chats');
+// Chats are stored per *project* — the directory you launched MicroDot from —
+// in <launchDir>/.microdot/chats (like Codex/OpenCode keying sessions to a cwd).
+const launchDir = () => process.env.MICRODOT_LAUNCH_DIR || process.cwd();
+
+export const chatsDir = () => {
+  const explicit = process.env.MICRODOT_CHATS_DIR;
+  if (explicit) return resolve(launchDir(), explicit);
+  return resolve(launchDir(), '.microdot', 'chats');
+};
 const chatFile = (dir, id) => join(dir, `${id}.json`);
 
 export function newChatId() {

@@ -1,6 +1,7 @@
 @echo off
 chcp 65001 >nul
 setlocal
+set "MICRODOT_LAUNCH_DIR=%CD%"
 cd /d "%~dp0"
 
 rem Use fnm's Node 24 if present (MicroDot needs Node 20+); otherwise fall back to PATH.

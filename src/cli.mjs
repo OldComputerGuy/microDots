@@ -327,7 +327,7 @@ async function main() {
     }
   }
   // Conversation state (persisted so it can be resumed later).
-  const chat = { id: newChatId(), title: '', agent: agentName, type: workerType, space: `spaces/${agentName}`, model, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
+  const chat = { id: newChatId(), title: '', agent: agentName, type: workerType, space: `spaces/${agentName}`, cwd: process.env.MICRODOT_LAUNCH_DIR || process.cwd(), model, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
   function autosave() {
     chat.messages = messages;
     if (!chat.title) {

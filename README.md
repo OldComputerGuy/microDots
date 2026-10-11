@@ -136,7 +136,7 @@ spaces/main/subagents/node-lts/
 ```
 
 ## Resuming chats
-Every conversation is saved to `./chats/<id>.json`, so you can pick it back up later.
+Every conversation is saved **per project** — under `<launch dir>/.microdot/chats/<id>.json`, where the launch dir is the folder you started MicroDot from (like Codex/OpenCode key sessions to a cwd). Each project therefore has its own session list.
 
 - **In the REPL:** `/resume` lists saved chats; `/resume <id>` (exact id, unique prefix, or title) loads one. `/name <title>` labels the current chat; `/reset` starts a new chat and saves the old one.
 - **On launch:** `microdot.bat --resume <id>`.
@@ -168,7 +168,8 @@ Applies to the root agent **and every sub-agent**. Each compaction costs one ext
 | `MICRODOT_SHOT_FULLPAGE` | `false` | `true` = capture the whole page, not just the viewport |
 | `MICRODOT_SHOT_KEEP` | `10` | keep only the newest N screenshots; older ones are deleted |
 | `MICRODOT_TOOLS_DIR` | `tools-custom` | folder for self-authored tools |
-| `MICRODOT_CHATS_DIR` | `chats` | folder for saved conversations (resumable) |
+| `MICRODOT_CHATS_DIR` | `.microdot/chats` | where chats are saved, relative to the launch dir |
+| `MICRODOT_LAUNCH_DIR` | *(set by launcher)* | the folder you launched from; chats are keyed to it |
 | `MICRODOT_SKILLS_DIR` | `skills` | folder for saved skills (recipes) |
 | `MICRODOT_WORKER_TYPES_DIR` | `worker-types` | folder for worker-type behaviour files |
 | `MICRODOT_WORKER_TYPE` | *(space)* | worker type for a new worker (else the space's, else `default`) |

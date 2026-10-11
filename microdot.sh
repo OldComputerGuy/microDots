@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # MicroDot launcher (Linux / VPS). Mirror of microdot.bat.
 set -euo pipefail
+LAUNCH_DIR="$PWD"
 cd "$(dirname "$(readlink -f "$0")")"
+export MICRODOT_LAUNCH_DIR="$LAUNCH_DIR"
 
 # Prefer fnm/nvm Node 20+ if available; otherwise use whatever is on PATH.
 if command -v fnm >/dev/null 2>&1; then
