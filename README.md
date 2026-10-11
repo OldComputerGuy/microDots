@@ -223,8 +223,10 @@ An agent tidies up after itself:
 | `MICRODOT_OFFLOAD_TOKENS` | `4000` | offload tool outputs larger than this to the space |
 | `MICRODOT_SUMMARY_MODEL` | `qwen/qwen3.6-flash` | cheap model for summaries (falls back to `MICRODOT_MODEL`) |
 | `MICRODOT_KEEP_SHOTS` | `false` | keep screenshots on exit (else removed) |
+| `MICRODOT_VERBOSE` | `false` | show per-tool call/result lines (else a quiet scanner) |
 
 ## Notes
+- Background actions are **quiet by default**: while the agent works it shows a KITT-style scanner (`─────o─────`, the `o` bouncing left↔right) with the current tool name, then clears it for the answer. Set `MICRODOT_VERBOSE=true` for the old per-tool `→`/`←` logging.
 - Assistant replies are rendered as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code blocks, links, rules).
 - Screenshots are written to `spaces/<worker>/shots/` (per worker) at `MICRODOT_VIEWPORT` size (default 1600×1000).
 - The shared Chromium uses a profile at `<engine>/.chromium-profile/` and is started/stopped automatically (see Self-cleanup); if you ever need to, end the `chrome`/`chrome.exe` process.

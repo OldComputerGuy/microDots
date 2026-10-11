@@ -8,6 +8,7 @@ import { createBrowserHost } from './browser-host.mjs';
 import { createTools, openPath, pruneScreenshots } from './tools.mjs';
 import { runAgent } from './agent.mjs';
 import { createMarkdownStream } from './markdown.mjs';
+import { createBusy } from './busy.mjs';
 import { stopSandboxWorker } from './tool-sandbox.mjs';
 import { listSkills } from './skills.mjs';
 import { ensureSpace, readMission, writeMission, shotsDir, getSpaceType, setSpaceType } from './space.mjs';
@@ -47,6 +48,11 @@ if (!apiKey) {
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
 const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
+
+// Quiet by default: a KITT-style scanner instead of a wall of tool lines.
+// MICRODOT_VERBOSE=true restores the per-tool logging.
+const VERBOSE = (process.env.MICRODOT_VERBOSE ?? 'false') === 'true';
+const busy = createBusy();
 
 const SYSTEM_BASE = `You are MicroDot, a small autonomous agent with your own browser tab in a shared Chromium. You have tools to fetch the web and to drive your tab. Be concise and factual.
 - Prefer web_search for current information; use http_get for plain pages; use the browser for pages that need JavaScript or interaction.
@@ -126,7 +132,9 @@ function compactFor(space, depth) {
     fallbackModel: model,
     spaceDir: space,
     headChars: 2000,
-    onNote: (m) => console.log(dim(`${'  '.repeat(depth)}  · ${m}`)),
+    onNote: (m) => {
+      if (VERBOSE) console.log(dim(`${'  '.repeat(depth)}  · ${m}`));
+    },
   };
 }
 
@@ -228,9 +236,11 @@ async function main() {
       writeFileSync(resolve(childSpace, 'worker_type'), `${childType}\n`);
       budget.agents++;
       const started = Date.now();
-      console.log(
-        dim(`${'  '.repeat(depth)}  ⤷ spawn ${childName} [${childType}] (agents ${budget.agents}/${maxAgents}, depth ${depth + 1}/${maxDepth})${debug ? ` @${new Date(started).toISOString().slice(11, 23)}` : ''}`),
-      );
+      if (VERBOSE) {
+        console.log(
+          dim(`${'  '.repeat(depth)}  ⤷ spawn ${childName} [${childType}] (agents ${budget.agents}/${maxAgents}, depth ${depth + 1}/${maxDepth})${debug ? ` @${new Date(started).toISOString().slice(11, 23)}` : ''}`),
+        );
+      }
 
       // Each agent gets its OWN tab (its own CDP host) on the shared Chromium —
       // created now, never changed, closed when the agent is done.
@@ -260,7 +270,7 @@ async function main() {
 
       let status = 'done';
       try {
-        await runAgent({ messages: childMessages, tools: childTools, model, apiKey, baseUrl, textLimit, maxSteps, onTool: makeOnTool(depth + 1), compact: compactFor(childSpace, depth + 1) });
+        await runAgent({ messages: childMessages, tools: childTools, model, apiKey, baseUrl, textLimit, maxSteps, onTool: VERBOSE ? makeOnTool(depth + 1) : undefined, compact: compactFor(childSpace, depth + 1) });
       } catch {
         status = 'failed';
       } finally {
@@ -288,7 +298,7 @@ async function main() {
         children: report?.children || [],
       };
       const ms = Date.now() - started;
-      console.log(dim(`${'  '.repeat(depth + 1)}└─ ${childName} [${status}] ${ms}ms: ${String(digest.summary).slice(0, 120)}`));
+      if (VERBOSE) console.log(dim(`${'  '.repeat(depth + 1)}└─ ${childName} [${status}] ${ms}ms: ${String(digest.summary).slice(0, 120)}`));
       return digest;
     }
 
@@ -335,6 +345,7 @@ async function main() {
   // Full agent shutdown: release the tab, stop the shared browser if we were the
   // last agent, and clean scratch (sub-agents, screenshots) unless kept.
   async function cleanup() {
+    busy.stop();
     autosave();
     cleanupSubagents();
     await host.closeTab().catch(() => {});
@@ -384,8 +395,17 @@ async function main() {
 
   async function turn(p) {
     messages.push({ role: 'user', content: p });
-    process.stdout.write(cyan('\ndot> '));
+    process.stdout.write('\n');
     const md = createMarkdownStream({ write: (s) => process.stdout.write(s) });
+    const rootOnTool = (kind, name, data) => {
+      if (VERBOSE) {
+        onTool(kind, name, data);
+        return;
+      }
+      if (kind === 'call') busy.start(name);
+      else busy.set(`${name} · done`);
+    };
+    busy.start('thinking');
     try {
       await runAgent({
         messages,
@@ -395,16 +415,21 @@ async function main() {
         baseUrl,
         textLimit,
         maxSteps,
-        onToken: (t) => md.push(t),
-        onTool,
+        onToken: (t) => {
+          if (!VERBOSE) busy.stop();
+          md.push(t);
+        },
+        onTool: rootOnTool,
         confirm: confirmCreate,
         compact: compactFor(spacePath, 0),
       });
     } catch (e) {
+      busy.stop();
       md.flush();
       console.error(`\n${yellow('error:')} ${e?.message ?? e}`);
     }
     md.flush();
+    busy.stop();
     process.stdout.write('\n');
     autosave();
   }
