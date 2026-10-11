@@ -16,6 +16,8 @@
 
 Each CLI window is its own agent sharing that one Chromium.
 
+![MicroDot answering a research prompt with a web search and a real browser tab](docs/assets/hero.png)
+
 ## Quick start
 ```sh
 npm install

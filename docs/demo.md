@@ -1,7 +1,11 @@
 # Recording the MicroDot demo
 
-The README should show the agent *doing something* in ~20–30 seconds. This is a
-manual step (it needs a real screen recording), but here's the recipe.
+The README should show the agent *doing something* in ~20–30 seconds. A static
+terminal still (`docs/assets/hero.png`) is already in the README as a stopgap;
+the GIF below is the real upgrade. This is a manual step (it needs a real screen
+recording), but here's the recipe.
+
+To regenerate the static hero from a run: `node scripts/render-hero.mjs`.
 
 ## What to show
 
