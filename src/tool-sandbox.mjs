@@ -214,8 +214,18 @@ function handleLine(line, onReady) {
     if (!r) return;
     runs.delete(msg.id);
     clearTimeout(r.timer);
-    if (msg.ok) r.resolve(msg.value);
-    else r.reject(new Error(msg.error));
+    if (msg.ok) {
+      // A tool whose code computed but never `return`ed would otherwise surface
+      // as a silent `null` (which reads like "the sandbox is broken").
+      if (msg.noReturn) {
+        r.log?.('tool returned no value — did you forget a return statement?');
+        r.resolve({ warning: 'tool returned no value — check for a missing `return` statement.' });
+      } else {
+        r.resolve(msg.value);
+      }
+    } else {
+      r.reject(new Error(msg.error));
+    }
   }
 }
 

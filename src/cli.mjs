@@ -13,7 +13,8 @@ import { buildSystem } from './prompt.mjs';
 import { makeSpawner } from './spawner.mjs';
 import { stopSandboxWorker } from './tool-sandbox.mjs';
 import { listSkills } from './skills.mjs';
-import { ensureSpace, readMission, writeMission, shotsDir, getSpaceType, setSpaceType } from './space.mjs';
+import { ensureSpace, readMission, writeMission, shotsDir, getSpaceType, setSpaceType, pruneNotes } from './space.mjs';
+import { listProjects, existsProject, createProject, deleteProject, getCurrentProject, setCurrentProject, clearCurrentProject } from './projects.mjs';
 import { listWorkerTypes, readWorkerType } from './worker-types.mjs';
 import { newChatId, saveChat, listChats, loadChat } from './chats.mjs';
 import { ensureProject } from './home.mjs';
@@ -57,14 +58,19 @@ const VERBOSE = (process.env.MICRODOT_VERBOSE ?? 'false') === 'true';
 const busy = createBusy();
 
 // Each worker has its own space: spaces/<worker_name>/ (mission.md + files).
+// Resume the remembered project (if any) before laying out paths.
+{
+  const remembered = getCurrentProject();
+  if (remembered && !(process.env.MICRODOT_PROJECT || '').trim()) setCurrentProject(remembered);
+}
 ensureProject();
-const spacePath = ensureSpace(agentName);
-const mission = readMission(agentName).trim();
+let spacePath = ensureSpace(agentName);
+let mission = readMission(agentName).trim();
 
 let workerType = (process.env.MICRODOT_WORKER_TYPE || '').trim() || getSpaceType(agentName) || 'default';
 setSpaceType(agentName, workerType);
 
-const SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
+let SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
 
 const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
 const ask = (q) => new Promise((r) => rl.question(q, (a) => r(a)));
@@ -144,6 +150,7 @@ function spawnAgentTerminal(name, type) {
 function help() {
   console.log(dim('commands:'));
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
+  console.log(dim('  /project [<name>]    show/load a project (resumes it); new <name> / delete <name> / off'));
   console.log(dim('  /paste        paste a multi-line prompt (end with a line containing only ".")'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
@@ -158,6 +165,15 @@ function help() {
   if (allowSpawn)
     console.log(dim(`  (sub-agents: spawn_subagent available — depth<=${maxDepth}, agents<=${maxAgents}, concurrency<=${maxConcurrent})`));
   else console.log(dim('  (sub-agents: disabled - MICRODOT_ALLOW_SPAWN=false)'));
+}
+
+// Re-print a resumed conversation so the terminal shows where you left off.
+function renderHistory(msgs) {
+  for (const m of msgs) {
+    if (m.role === 'system') continue;
+    if (m.role === 'user' && typeof m.content === 'string') console.log(`${cyan('you>')} ${m.content}`);
+    else if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) console.log(`\n${m.content}`);
+  }
 }
 
 async function main() {
@@ -200,7 +216,7 @@ async function main() {
     },
   });
 
-  const tools = await createTools({
+  let tools = await createTools({
     host,
     agentId: agentName,
     textLimit,
@@ -227,6 +243,12 @@ async function main() {
     busy.stop();
     autosave();
     cleanupSubagents();
+    if ((process.env.MICRODOT_PRUNE_NOTES ?? 'true') !== 'false') {
+      pruneNotes(agentName, {
+        keep: Number(process.env.MICRODOT_NOTES_KEEP ?? 400) || 400,
+        maxMB: Number(process.env.MICRODOT_NOTES_MAX_MB ?? 25) || 25,
+      });
+    }
     await host.closeTab().catch(() => {});
     await stopChromiumIfIdle().catch(() => {});
     await host.close().catch(() => {});
@@ -267,9 +289,47 @@ async function main() {
       chat.title = c.title || '';
       messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
       console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
+      renderHistory(messages);
     } catch (e) {
       console.error(yellow(`resume failed: ${e?.message ?? e}`));
     }
+  }
+
+  // Switch the active project and re-init the session for it. `fresh` starts a
+  // clean chat; otherwise the project's most recent chat is resumed.
+  async function loadProject(name, { fresh = false } = {}) {
+    autosave();
+    setCurrentProject(name);
+    ensureProject();
+    spacePath = ensureSpace(agentName);
+    mission = readMission(agentName).trim();
+    workerType = (process.env.MICRODOT_WORKER_TYPE || '').trim() || getSpaceType(agentName) || 'default';
+    setSpaceType(agentName, workerType);
+    SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
+    tools = await createTools({
+      host,
+      agentId: agentName,
+      textLimit,
+      delegate: allowSpawn ? makeDelegate({ parentSpace: spacePath, depth: 0 }) : undefined,
+    });
+    chat.space = `spaces/${agentName}`;
+    chat.id = newChatId();
+    chat.title = '';
+    chat.createdAt = Date.now();
+    messages = [{ role: 'system', content: SYSTEM }];
+    if (!fresh) {
+      const list = listChats();
+      if (list.length) {
+        const c = loadChat(list[0].id);
+        chat.id = c.id;
+        chat.title = c.title || '';
+        messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
+        console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
+        renderHistory(messages);
+      }
+    }
+    autosave();
+    console.log(dim(`project "${name}" · space spaces/${agentName} · type ${workerType} · ${listChats().length} chat(s)`));
   }
 
   async function turn(p) {
@@ -456,6 +516,7 @@ async function main() {
           chat.title = c.title || '';
           messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
           console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
+          renderHistory(messages);
         } catch (e) {
           console.log(yellow(`  ${e?.message ?? e}`));
         }
@@ -470,6 +531,60 @@ async function main() {
         console.log(dim(`chat title: ${t}`));
       } else {
         console.log(dim(`chat: ${chat.title || '(auto)'} · id ${chat.id}`));
+      }
+      continue;
+    }
+    if (line === '/projects' || line === '/project' || line.startsWith('/project ')) {
+      const rest = line === '/projects' ? '' : line.replace(/^\/project\b\s*/, '').trim();
+      const parts = rest.split(/\s+/).filter(Boolean);
+      const sub = parts[0] || '';
+      const name = parts[1] || '';
+      const cur = (process.env.MICRODOT_PROJECT || '').trim();
+      if (!sub || sub === 'list') {
+        console.log(dim(`current project: ${cur || '(none — using the launch folder)'}`));
+        const list = listProjects();
+        if (!list.length) console.log(dim('no projects yet — create one with: /project new <name>'));
+        else for (const p of list) console.log(`  ${p.name === cur ? '*' : ' '} ${p.name}  ${dim(`${p.chats} chat(s) · ${new Date(p.updatedAt).toLocaleString()}`)}`);
+        console.log(dim('load: /project <name>   new: /project new <name>   delete: /project delete <name>   off: /project off'));
+        continue;
+      }
+      if (sub === 'new') {
+        if (!name) console.log(dim('usage: /project new <name>'));
+        else {
+          try {
+            createProject(name);
+            await loadProject(name, { fresh: true });
+          } catch (e) {
+            console.log(yellow(`  ${e?.message ?? e}`));
+          }
+        }
+        continue;
+      }
+      if (sub === 'delete') {
+        if (!name) console.log(dim('usage: /project delete <name>'));
+        else {
+          try {
+            deleteProject(name);
+            console.log(dim(`deleted project "${name}"`));
+          } catch (e) {
+            console.log(yellow(`  ${e?.message ?? e}`));
+          }
+        }
+        continue;
+      }
+      if (sub === 'off') {
+        clearCurrentProject();
+        console.log(dim('project cleared — using the launch folder'));
+        continue;
+      }
+      if (!existsProject(sub)) {
+        console.log(yellow(`  no project "${sub}" — create it with: /project new ${sub}`));
+        continue;
+      }
+      try {
+        await loadProject(sub, { fresh: false });
+      } catch (e) {
+        console.log(yellow(`  ${e?.message ?? e}`));
       }
       continue;
     }

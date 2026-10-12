@@ -1,6 +1,6 @@
 // Path layers:
 //   engine  = where MicroDot's code + shipped defaults live (this install dir)
-//   project = the folder you launched from  ->  <launchDir>/.microdot
+//   project = a named workspace, else the folder you launched from (legacy)
 //
 // Engine holds the shared Chromium profile and shipped worker-types/skills/tools.
 // Project holds chats, spaces, and any project-specific tools/skills/worker-types.
@@ -11,7 +11,19 @@ import { mkdirSync, existsSync, writeFileSync } from 'node:fs';
 const here = dirname(fileURLToPath(import.meta.url)); // .../<install>/src
 
 export const engineDir = () => resolve(process.env.MICRODOT_HOME || resolve(here, '..'));
-export const projectDir = () => resolve(process.env.MICRODOT_LAUNCH_DIR || process.cwd(), '.microdot');
+
+// Where named projects live (engine-level; override with MICRODOT_PROJECTS_DIR).
+export const projectsRoot = () => resolve(process.env.MICRODOT_PROJECTS_DIR || resolve(engineDir(), 'projects'));
+
+// The project layer: explicit MICRODOT_PROJECT_DIR override, else a named project
+// (MICRODOT_PROJECT) under the projects root, else the legacy <launchDir>/.microdot.
+export const projectDir = () => {
+  const explicit = (process.env.MICRODOT_PROJECT_DIR || '').trim();
+  if (explicit) return resolve(process.cwd(), explicit);
+  const name = (process.env.MICRODOT_PROJECT || '').trim();
+  if (name) return resolve(projectsRoot(), name);
+  return resolve(process.env.MICRODOT_LAUNCH_DIR || process.cwd(), '.microdot');
+};
 
 // Create the project layer and drop a self-ignoring .gitignore so it never
 // lands in a repo.

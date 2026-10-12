@@ -23,6 +23,27 @@ await rt.close();
 - Sub-agents, self-authored tools, spaces, chats and compaction all work exactly as in the CLI.
 - Every option falls back to the matching `MICRODOT_*` env var; the **CLI is a thin test harness** over this same core.
 
+## Projects
+
+A **project** is a named workspace — a logical container for chats, spaces,
+missions, notes and project-specific tools — **not** a folder you navigate. It's
+the natural unit when you use one agent for different jobs (per client, topic or
+experiment) without shuffling directories.
+
+- `/project` shows the current project and lists the others.
+- `/project <name>` **loads and resumes** it (its latest chat + its space).
+- `/project new <name>` creates a **clean** project and switches to it.
+- `/project delete <name>` removes one (not the current).
+- `/project off` returns to the launch folder.
+- The current project is remembered across launches (a `.current` pointer under
+  the projects root), so a restart drops you back where you were.
+
+Storage still lives on disk (`<projectsRoot>/<name>/`), but you only ever refer
+to it by name. With no project set, MicroDot keeps the legacy layout
+`<launchDir>/.microdot`. Project-layer tools/skills/worker-types still override
+the engine's shipped ones. See the env table for `MICRODOT_PROJECT`,
+`MICRODOT_PROJECTS_DIR` and the notes-prune knobs.
+
 ## Architecture
 - The first MicroDot CLI **launches one Chromium** (persistent, headless or headful) exposing CDP; every other agent connects to it.
 - Each CLI process is **one agent** and works in its **own tab**.
@@ -197,6 +218,11 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_CHROMIUM_ARGS` | — | extra Chromium flags |
 | `MICRODOT_TERMINAL` | `x-terminal-emulator` | terminal for `/new` on Linux |
 | `MICRODOT_AGENT` | `main` | agent name for this window |
+| `MICRODOT_PROJECT` | — | current project name (else the launch folder) |
+| `MICRODOT_PROJECTS_DIR` | `<engine>/projects` | where named projects live |
+| `MICRODOT_PRUNE_NOTES` | `true` | prune a space's `notes/` on exit |
+| `MICRODOT_NOTES_KEEP` | `400` | keep the newest N note files |
+| `MICRODOT_NOTES_MAX_MB` | `25` | notes size budget (MB) |
 | `MICRODOT_MAX_STEPS` | `12` | max tool-loop steps per turn |
 | `MICRODOT_TEXT_LIMIT` | `32768` | max chars of a tool result fed to the model |
 | `MICRODOT_TEXT_TOKENS` | — | budget tool results in tokens instead |

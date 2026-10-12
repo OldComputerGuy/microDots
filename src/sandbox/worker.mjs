@@ -173,7 +173,7 @@ async function run(msg) {
     const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
     const fn = new AsyncFunction('args', 'ctx', code);
     const value = await fn(args ?? {}, ctx);
-    send({ type: 'result', id, ok: true, value: value === undefined ? null : value });
+    send({ type: 'result', id, ok: true, value: value === undefined ? null : value, noReturn: value === undefined });
   } catch (e) {
     send({ type: 'result', id, ok: false, error: String(e?.message ?? e) });
   }

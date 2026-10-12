@@ -6,7 +6,7 @@
 //     <other files>   <- notes, documents, downloads the worker produces
 //
 // The space is also the sandbox root, so tool file writes land here (enforced).
-import { mkdirSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdirSync, existsSync, writeFileSync, readFileSync, readdirSync, statSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { projectDir } from './home.mjs';
 
@@ -73,4 +73,43 @@ export function setSpaceType(agentId, type) {
   mkdirSync(spaceDir(agentId), { recursive: true });
   writeFileSync(typePath(agentId), `${type}\n`);
   return typePath(agentId);
+}
+
+// The space's notes/ holds offloaded tool outputs; it can grow without bound.
+// Keep the newest `keep` files within a `maxMB` total budget; delete the rest.
+export function pruneNotes(agentId = 'main', { keep = 400, maxMB = 25 } = {}) {
+  const dir = resolve(spaceDir(agentId), 'notes');
+  let entries;
+  try {
+    entries = readdirSync(dir).map((f) => {
+      const p = resolve(dir, f);
+      let size = 0;
+      let mtimeMs = 0;
+      try {
+        const s = statSync(p);
+        size = s.size;
+        mtimeMs = s.mtimeMs;
+      } catch {
+        /* ignore */
+      }
+      return { p, size, mtimeMs };
+    });
+  } catch {
+    return { removed: 0, kept: 0 };
+  }
+  entries.sort((a, b) => b.mtimeMs - a.mtimeMs); // newest first
+  let total = 0;
+  let removed = 0;
+  for (let i = 0; i < entries.length; i++) {
+    total += entries[i].size;
+    if (i >= keep || total > maxMB * 1024 * 1024) {
+      try {
+        rmSync(entries[i].p, { force: true });
+        removed++;
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+  return { removed, kept: entries.length - removed };
 }
