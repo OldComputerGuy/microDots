@@ -16,7 +16,7 @@
 
 **A Dot on a diet** — a bare-bones, **self-extending** agent built to run on small servers. No CopilotKit, no React, no server, no DB, no Docker.
 
-- **Builds its own tools** - `create_tool` (sandboxed) + `list_tools` / `delete_tool`.
+- **Builds its own tools** - `create_tool` (sandboxed) + `list_tools` / `delete_tool` / `copy_tool`.
 - **Delegates to itself** — `spawn_subagent` / `spawn_subagents`: recursive, parallel, nested spaces, roll-up, hard caps.
 - **One process, one Chromium** — a tab per agent; started on demand and stopped when idle.
 - **Plain-file state** — chats, spaces, worker types, skills, tools. No services to run.

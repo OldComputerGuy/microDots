@@ -11,6 +11,7 @@ import {
   scanToolCode,
   saveTool,
   deleteTool,
+  copyTool,
   importTool,
   loadCustomTools,
 } from './custom-tools.mjs';
@@ -226,6 +227,25 @@ const BUILTINS = [
         type: 'object',
         properties: { name: { type: 'string', description: 'Name of the custom tool to delete' } },
         required: ['name'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'copy_tool',
+      description:
+        'Copy one of your custom tools from one project to another, by name. Tools live per-project (<project>/tools/<name>.mjs); use this to share/reuse a tool in another project. The source defaults to the current project.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Tool name (file base, without .mjs)' },
+          from: { type: 'string', description: 'Source project name (default: the current project)' },
+          to: { type: 'string', description: 'Target project name' },
+          overwrite: { type: 'boolean', description: 'Replace the tool in the target if it already exists' },
+        },
+        required: ['name', 'to'],
         additionalProperties: false,
       },
     },
@@ -595,6 +615,15 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
         custom.delete(name);
         const file = deleteTool(name);
         return { deleted: name, file };
+      }
+      case 'copy_tool': {
+        const name = String(args?.name ?? '').trim();
+        const from = String(args?.from ?? '').trim() || (process.env.MICRODOT_PROJECT || '').trim();
+        const to = String(args?.to ?? '').trim();
+        if (!name) throw new Error('"name" is required');
+        if (!from) throw new Error('a source project is required ("from") — no current project is active');
+        if (!to) throw new Error('a target project is required ("to")');
+        return copyTool({ name, from, to, overwrite: args?.overwrite === true });
       }
       case 'http_get': {
         const res = await fetch(args.url, {

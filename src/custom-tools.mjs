@@ -10,7 +10,8 @@
 import { readdirSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { layerDirs, writeDir } from './home.mjs';
+import { layerDirs, writeDir, projectsRoot } from './home.mjs';
+import { validProjectName } from './projects.mjs';
 
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const dirs = () => layerDirs('MICRODOT_TOOLS_DIR', 'tools-custom', 'tools');
@@ -82,6 +83,42 @@ export function deleteTool(name) {
     }
   }
   return removed;
+}
+
+// The tools dir for a NAMED project (regardless of which project is active now).
+export function projectToolDir(project) {
+  return resolve(projectsRoot(), validProjectName(project), 'tools');
+}
+
+// Copy a custom tool file from one project to another. Tools are host-managed
+// and per-project, so this runs on the host (exposed to the agent as the
+// `copy_tool` builtin). A leading "_" (parked) name is preserved.
+export function copyTool({ name, from, to, overwrite = false } = {}) {
+  const tool = String(name || '').trim();
+  if (!NAME_RE.test(tool)) throw new Error(`invalid tool name "${name}" — use letters, digits or underscore`);
+  if (!from) throw new Error('a source project ("from") is required');
+  if (!to) throw new Error('a target project ("to") is required');
+  const src = join(projectToolDir(from), `${tool}.mjs`);
+  const dst = join(projectToolDir(to), `${tool}.mjs`);
+  if (!existsSync(src)) {
+    let available = [];
+    try {
+      available = readdirSync(projectToolDir(from))
+        .filter((f) => f.toLowerCase().endsWith('.mjs'))
+        .map((f) => f.replace(/\.mjs$/i, ''));
+    } catch {
+      /* none */
+    }
+    throw new Error(
+      `tool "${tool}" not found in project "${from}"${available.length ? ` (has: ${available.join(', ')})` : ' (no tools)'}`,
+    );
+  }
+  if (existsSync(dst) && !overwrite) {
+    throw new Error(`"${to}/tools/${tool}.mjs" already exists — pass overwrite:true to replace it`);
+  }
+  mkdirSync(projectToolDir(to), { recursive: true });
+  writeFileSync(dst, readFileSync(src));
+  return { copied: tool, from: String(from).trim(), to: String(to).trim(), file: dst };
 }
 
 async function importFile(file) {

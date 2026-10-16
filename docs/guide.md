@@ -111,13 +111,13 @@ MicroDot can **write its own tools** and use them immediately.
 - Call **`create_tool`** with `name`, `description`, a JSON-Schema `parameters`, and the JS body of `async function run(args, ctx)`.
 - The tool is registered live (callable in the **same** turn) and saved to the project layer (`<project>/.microdot/tools/<name>.mjs`).
 - Saved tools **auto-load** at startup, so they persist across sessions.
-- Manage them with **`list_tools`** (built-ins + your custom tools) and **`delete_tool`** (removes the tool and its file).
+- Manage them with **`list_tools`** (built-ins + your custom tools), **`delete_tool`** (removes the tool and its file), and **`copy_tool`** (copies a tool from one project to another — tools are per-project).
 - Tools are saved **without asking** by default. Optionally set `MICRODOT_APPROVE_CREATE_TOOL=true` to be prompted (y/N) when a tool's code touches risky capabilities (`child_process`, `require`, dynamic `import`, direct `fs`/`fetch`, absolute paths, `process`, `eval`).
 In the sandbox, `ctx` gives `agentId`, `fetch(url,opts)`, `log(...)`, `fs` (jailed to the worker's space), and `browser.*` (bridged to the host browser).
 
 **Tool management model (important):**
 - `tools/` is **host-managed**. The sandbox worker sees the project read-only, so a tool **cannot write or delete files in `tools/`** (it gets `EROFS`). This is deliberate — sandboxed code must not modify the tool set.
-- The **single source of truth** is `<project>/.microdot/tools/<name>.mjs`, and it is edited **only** through `create_tool` (reuse a name to overwrite) / `delete_tool`. Don't keep copies elsewhere or "install" functions to copy files into `tools/`.
+- The **single source of truth** is `<project>/.microdot/tools/<name>.mjs`, and it is edited **only** through `create_tool` (reuse a name to overwrite) / `delete_tool`. Don't hand-copy files into `tools/`; to move a tool between projects use the **`copy_tool`** builtin (host-managed).
 - A file whose name starts with **`_`** is **parked**: it stays on disk but is **not loaded** (kept out of the model's tool list). Prefix throwaway probes with `_dbg_` (or delete them); rename to activate.
 - Keep genuinely reusable helpers (e.g. probes you rely on) under a normal name; they'll load every session.
 
