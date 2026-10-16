@@ -40,7 +40,8 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
   function edit(next) {
     input = next;
     filter = input;
-    if (cur > input.length) cur = input.length;
+    // NOTE: do not clamp `cur` here — callers adjust it, and render() clamps as
+    // a safety net. Clamping here double-corrected Backspace (caret one short).
   }
 
   // Suggestions for the current typed token, from the caller's provider.
