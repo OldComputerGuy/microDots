@@ -17,14 +17,20 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
   let pasteBuf = '';
   let lastPrompt = '';
   let sel = 0;
-  let renderHeight = 1; // lines occupied by (prompt tail + input + menu)
+  let inputRows = 1; // rows occupied by (prompt tail + input) at the last render
 
   const write = (s) => {
     if (isTTY) stdout.write(s);
   };
   const stripAnsi = (s) => s.replace(/\u001b\[[0-9;]*m/g, '');
   const promptTail = () => lastPrompt.split('\n').pop();
-  const newlines = (s) => (s.match(/\n/g) || []).length;
+  const cols = () => Math.max(20, (stdout.columns || 80) | 0);
+  // Rows a set of display lines occupies, accounting for terminal wrapping.
+  function rowsOf(lines, w) {
+    let r = 0;
+    for (const l of lines) r += Math.max(1, Math.ceil(stripAnsi(l).length / w));
+    return Math.max(1, r);
+  }
 
   // Matching slash commands for the current typed token (hidden after a space,
   // or when the token is already an exact command).
@@ -36,26 +42,30 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
 
   function render() {
     if (!isTTY) return;
+    const w = cols();
     const items = matches();
     if (sel >= items.length) sel = Math.max(0, items.length - 1);
+
     let out = '';
-    if (renderHeight > 1) out += `\u001b[${renderHeight - 1}A`;
+    if (inputRows > 1) out += `\u001b[${inputRows - 1}A`; // back to the first input row
     out += '\r\u001b[0J';
-    out += promptTail() + input;
-    let extra = 0;
+    const body = promptTail() + input;
+    out += body;
+
     if (items.length) {
-      out +=
-        '\n' +
-        items
-          .map((c, i) => `${i === sel ? '\u203a' : ' '} ${c.name}${c.help ? `  \u001b[2m${c.help}\u001b[0m` : ''}`)
-          .join('\n');
-      extra = items.length;
-      const col = stripAnsi(promptTail()).length + input.length;
-      out += `\u001b[${extra}A\r`;
-      if (col > 0) out += `\u001b[${col}C`;
+      const mlines = items.map(
+        (c, i) => `${i === sel ? '\u203a' : ' '} ${c.name}${c.help ? `  \u001b[2m${c.help}\u001b[0m` : ''}`,
+      );
+      const menuRows = rowsOf(mlines, w);
+      out += '\n' + mlines.join('\n');
+      // put the cursor back on the (last) input row, just after the input
+      out += `\u001b[${menuRows}A\r`;
+      const len = stripAnsi(body).length; // menu only when input is a single line
+      const col = len % w;
+      out += `\u001b[${col === 0 ? w : col}C`;
     }
     stdout.write(out);
-    renderHeight = 1 + newlines(input) + extra;
+    inputRows = rowsOf(body.split('\n'), w);
   }
 
   if (isTTY) {
@@ -105,7 +115,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         input = '';
         filter = '';
         sel = 0;
-        renderHeight = 1;
+        inputRows = 1;
         deliver(value);
         i++;
         continue;
@@ -180,7 +190,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     ask(prompt) {
       lastPrompt = prompt || '';
       if (prompt) stdout.write(prompt);
-      renderHeight = 1;
+      inputRows = 1;
       sel = 0;
       if (pending.length) return Promise.resolve(pending.shift());
       return new Promise((res) => {
@@ -194,9 +204,9 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
       inPaste = false;
       sel = 0;
       if (isTTY) {
-        if (renderHeight > 1) stdout.write(`\u001b[${renderHeight - 1}A`);
+        if (inputRows > 1) stdout.write(`\u001b[${inputRows - 1}A`);
         stdout.write(`\r\u001b[0J${promptTail()}`);
-        renderHeight = 1;
+        inputRows = 1;
       }
     },
     close() {
