@@ -123,13 +123,13 @@ export async function run(args, ctx) {
 ```
 
 ## Tool sandbox backend
-By default (`MICRODOT_TOOL_SANDBOX=auto`) self-authored tools run in an isolated **Linux worker** (WSL on Windows, native on Linux) and fall back to in-process only if it can't start. One worker script, two launchers:
+By default (`MICRODOT_TOOL_SANDBOX=auto`) self-authored tools run in an isolated **Linux worker** (WSL on Windows, native on Linux); if the worker can't start, custom tools are **refused** (fail closed). One worker script, two launchers:
 
 - **Windows:** the worker runs **inside WSL2** (spawned via `wsl.exe`). Requires Node in WSL: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
 - **Linux/VPS:** the worker runs **natively** — no WSL.
 - **Confinement (`MICRODOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` — the system is mounted **read-only** and only the worker's space is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed. Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed. If `bubblewrap` is missing, MicroDot warns and **falls back to the unconfined worker**.
 
-Modes: `auto` (default) = sandbox when available else in-process; `none` = always in-process (full local privileges); `wsl`/`sandbox` = always sandbox (no fallback). The worker start has a timeout (`MICRODOT_SANDBOX_START_TIMEOUT_MS`).
+Modes: `auto` (default) = always the sandbox — if it can't start, custom tools are refused (no in-process fallback); `none` = run custom tools in-process (full local privileges — explicit, risky); `wsl`/`sandbox` = always the sandbox. Worker start has a timeout (`MICRODOT_SANDBOX_START_TIMEOUT_MS`).
 
 In the sandbox:
 - `ctx.fs` is jailed to the worker's space (`<project>/.microdot/spaces/<worker>/`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (shared Chromium / OS viewer).
@@ -211,7 +211,7 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_SPACE` | worker name | space to use |
 | `MICRODOT_MISSION` | — | initial `mission.md` text |
 | `MICRODOT_SANDBOX_BWRAP` | `false` | wrap worker in bubblewrap (read-only root) |
-| `MICRODOT_SANDBOX_START_TIMEOUT_MS` | `15000` | worker start timeout (then fallback) |
+| `MICRODOT_SANDBOX_START_TIMEOUT_MS` | `15000` | worker start timeout (then custom tools are refused) |
 | `MICRODOT_WSL_DISTRO` | `Ubuntu-24.04` | WSL distro (Windows) |
 | `MICRODOT_WSL_TIMEOUT_MS` | `60000` | per-call worker timeout |
 | `MICRODOT_NODE` | `node` | Node binary for the worker (Linux) |

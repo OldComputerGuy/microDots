@@ -17,11 +17,11 @@ prefer to stay anonymous.
 
 ## Things to know before you run it
 
-- **The agent executes code.** Self-authored tools (`create_tool`) run in a
-  Linux worker (WSL on Windows, native on Linux), optionally under
-  `bubblewrap`. `MICRODOT_TOOL_SANDBOX=auto` falls back to **in-process**
-  execution with a warning when no sandbox is available — in that fallback,
-  generated code runs with your privileges. Use an explicit sandbox mode in
+- **The agent executes code.** Self-authored tools (`create_tool`) run **only** in
+  a Linux worker (WSL on Windows, native on Linux), optionally under `bubblewrap`.
+  If the worker can't start, custom tools are **refused** — there is no in-process
+  fallback (`MICRODOT_TOOL_SANDBOX=auto` fails closed). Setting it to `none`
+  deliberately runs custom tools in-process with your privileges; don't do that in
   untrusted settings.
 - **Web content is untrusted input.** The agent browses and fetches pages; treat
   prompt-injection from fetched pages as a real risk. Don't give a Dot

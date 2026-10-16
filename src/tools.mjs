@@ -379,7 +379,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
   const page = () => host.getPage();
   const dir = customDir();
   const sandboxMode = (process.env.MICRODOT_TOOL_SANDBOX ?? 'auto').toLowerCase();
-  let useSandbox = sandboxMode !== 'none';
+  const useSandbox = sandboxMode !== 'none';
   const root = space ? resolve(space) : spaceDir(agentId);
   mkdirSync(root, { recursive: true });
   const backendName = (code) => (useSandbox && code ? (process.platform === 'win32' ? 'wsl' : 'sandbox') : 'in-process');
@@ -497,14 +497,16 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
           });
         } catch (e) {
           const msg = String(e?.message ?? e);
-          // 'auto': if the sandbox can't start, run tools in-process for the rest
-          // of this session (e.g. WSL/Node not available). Explicit modes don't.
+          // Fail CLOSED: never silently run generated code on the host. If the
+          // sandbox can't start, refuse the tool. (MICRODOT_TOOL_SANDBOX=none is
+          // the only way to run custom tools in-process — an explicit choice.)
           if (sandboxMode === 'auto' && /sandbox worker|did not start/i.test(msg)) {
-            useSandbox = false;
-            console.error(`MicroDot: sandbox unavailable (${msg}); running tools in-process for this session.`);
-          } else {
-            throw e;
+            throw new Error(
+              `tool sandbox unavailable (${msg}) — refusing to run "${name}" in-process. ` +
+                `Enable the sandbox (WSL/bwrap), or set MICRODOT_TOOL_SANDBOX=none to allow in-process execution at your own risk.`,
+            );
           }
+          throw e;
         }
       }
       return await c.run(args, ctx);
