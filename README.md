@@ -17,6 +17,7 @@
 **A Dot on a diet** — a bare-bones, **self-extending** agent built to run on small servers. No CopilotKit, no React, no server, no DB, no Docker.
 
 - **Builds its own tools** - `create_tool` (sandboxed) + `list_tools` / `delete_tool` / `copy_tool`.
+- **Sandboxed, with no host fallback** — self-authored tools run only in an isolated Linux worker (WSL on Windows / native on Linux), jailed to their space; if the worker can't start, the tool is refused.
 - **Delegates to itself** — `spawn_subagent` / `spawn_subagents`: recursive, parallel, nested spaces, roll-up, hard caps.
 - **One process, one Chromium** — a tab per agent; started on demand and stopped when idle.
 - **Drives a real browser tab** — open, read, click, type, **scroll**, screenshot.
@@ -50,13 +51,15 @@ microdot.bat --resume <id>              # resume a saved chat
 | `/project [name]` | show/load a project (resumes its last chat); no name: pick from a list; `new`/`delete`; `/project /` returns to the root |
 | `/resume [id]` | resume a saved chat — no id: pick from a list (Up/Down, Enter) |
 | `/name [title]` | show or set this chat's title |
-| `/tools`, `/delete <n>` | list / delete custom tools |
+| `/tools`, `/delete <n>` | list / delete custom tools — in the root, `/tools` lists every project's tools grouped by project |
 | `/skills` | list saved skills |
 | `/type [name]` | show or set this worker's type |
 | `/mission [text]` | show or set this space's `mission.md` (`/` resets to the root mission) |
 | `/reset`, `/cls`, `/clear`, `/shots`, `/help`, `/exit` | `/cls` clears the screen; `/clear` (or bare `clear`) clears the context and the screen |
 
 Keyboard: paste multi-line text directly (Enter runs it); type **`/`** for a command menu (**↑/↓** or **Tab** fill the line, **Enter** runs it); **↑/↓** (with no menu) recall previous inputs; **Esc** stops a running turn; **Ctrl-C** is ignored when idle, and during a turn a second press within a second stops the system.
+
+Output is **colour-coded** on a TTY and plain when piped/redirected (respects `NO_COLOR`; `FORCE_COLOR=1` forces it on).
 
 ## Use as a library
 ```js
