@@ -54,8 +54,11 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout } 
       if (inPaste && s.startsWith('\x1b[201~', i)) {
         inPaste = false;
         i += 6;
-        input += pasteBuf; // fill the buffer, do NOT submit
-        write(pasteBuf);
+        // Normalise Windows line endings: a raw \r echoed to the terminal would
+        // snap the cursor to column 0 and overwrite the line.
+        const clean = pasteBuf.replace(/\r\n?/g, '\n');
+        input += clean; // fill the buffer, do NOT submit
+        write(clean);
         pasteBuf = '';
         continue;
       }
