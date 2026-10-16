@@ -273,9 +273,9 @@ async function main() {
     }
   }
 
-  // Ctrl-C: first press stops the running turn (or shows a hint if idle);
-  // press again within EXIT_MS to quit — avoids accidental exits (Ctrl-C is
-  // also "copy" in most terminals).
+  // Ctrl-C: first press just warns "press Ctrl-C again to exit"; a second press
+  // within EXIT_MS exits. Enter cancels the warning and continues normally.
+  // (Ctrl-C never stops a turn and never clears input — Esc does that.)
   const EXIT_MS = Math.max(500, Number(process.env.MICRODOT_EXIT_CONFIRM_MS ?? 2000) || 2000);
   let lastInterrupt = 0;
   function handleInterrupt() {
@@ -286,12 +286,7 @@ async function main() {
       return;
     }
     lastInterrupt = now;
-    if (activeAbort) {
-      activeAbort.abort();
-      console.log(dim('\n(interrupted — press Ctrl-C again to exit)'));
-    } else {
-      console.log(dim('\n(press Ctrl-C again to exit)'));
-    }
+    console.log(dim('\n(press Ctrl-C again to exit)'));
   }
   onInterrupt = handleInterrupt;
   process.on('SIGINT', handleInterrupt);
@@ -426,6 +421,7 @@ async function main() {
   help();
   while (true) {
     const line = (await ask(cyan(`\n${agentName}@you> `))).trim();
+    lastInterrupt = 0; // Enter cancels the Ctrl-C exit warning
     if (!line) continue;
     if (line === '/exit' || line === '/quit') break;
     if (line === '/help') {
