@@ -2,8 +2,8 @@
 //
 // TTY: raw mode + bracketed paste. A pasted block fills the input (no submit);
 // Enter runs it. When the input is a slash token (e.g. "/pro"), a live menu of
-// matching commands is shown below the prompt; Up/Down select, Tab completes,
-// Enter runs the selection. Non-TTY falls back to plain line reading.
+// matching commands is shown below the prompt. Up/Down (or Tab) fill the line
+// with the highlighted command; Enter submits whatever is on the line.
 //
 // ask(prompt) resolves with the submitted text (may contain newlines).
 export function createPrompt({ stdin = process.stdin, stdout = process.stdout, onEscape, onInterrupt, commands = [] } = {}) {
@@ -11,12 +11,13 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
   const DEBUG = process.env.MICRODOT_DEBUG_INPUT === '1';
   const pending = [];
   let waiter = null;
-  let input = '';
-  let inPaste = false;
+  let input = ''; // what's on the line (and what gets submitted)
+  let filter = ''; // the slash token used to match commands (kept separate so
+  let inPaste = false; //   navigating the menu doesn't collapse it)
   let pasteBuf = '';
   let lastPrompt = '';
   let sel = 0;
-  let renderHeight = 1; // lines currently occupied by (prompt tail + input + menu)
+  let renderHeight = 1; // lines occupied by (prompt tail + input + menu)
 
   const write = (s) => {
     if (isTTY) stdout.write(s);
@@ -25,10 +26,12 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
   const promptTail = () => lastPrompt.split('\n').pop();
   const newlines = (s) => (s.match(/\n/g) || []).length;
 
-  // Matching slash commands for the current input (hidden once you type a space).
+  // Matching slash commands for the current typed token (hidden after a space,
+  // or when the token is already an exact command).
   function matches() {
-    if (input.includes('\n') || !input.startsWith('/') || /\s/.test(input)) return [];
-    return commands.filter((c) => c.name.startsWith(input));
+    if (filter.includes('\n') || !filter.startsWith('/') || /\s/.test(filter)) return [];
+    const m = commands.filter((c) => c.name.startsWith(filter));
+    return m.length === 1 && m[0].name === filter ? [] : m;
   }
 
   function render() {
@@ -41,7 +44,11 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     out += promptTail() + input;
     let extra = 0;
     if (items.length) {
-      out += '\n' + items.map((c, i) => `${i === sel ? '\u203a' : ' '} ${c.name}${c.help ? `  \u001b[2m${c.help}\u001b[0m` : ''}`).join('\n');
+      out +=
+        '\n' +
+        items
+          .map((c, i) => `${i === sel ? '\u203a' : ' '} ${c.name}${c.help ? `  \u001b[2m${c.help}\u001b[0m` : ''}`)
+          .join('\n');
       extra = items.length;
       const col = stripAnsi(promptTail()).length + input.length;
       out += `\u001b[${extra}A\r`;
@@ -79,6 +86,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         i += 6;
         const clean = pasteBuf.replace(/\r\n?/g, '\n');
         input += clean; // fill the buffer, do NOT submit
+        filter = input;
         render();
         pasteBuf = '';
         continue;
@@ -91,12 +99,11 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
       const ch = s[i];
 
       if (ch === '\r' || ch === '\n') {
-        const items = matches();
-        if (items.length) input = items[sel].name; // run the highlighted command
         if (isTTY) stdout.write('\u001b[0J'); // drop the menu
         write('\n');
-        const value = input;
+        const value = input; // submit the line as-is
         input = '';
+        filter = '';
         sel = 0;
         renderHeight = 1;
         deliver(value);
@@ -106,7 +113,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
       if (ch === '\t') {
         const items = matches();
         if (items.length) {
-          input = items[sel].name;
+          input = items[sel].name; // fill the line (menu stays for more navigation)
           render();
         }
         i++;
@@ -115,6 +122,10 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
       if (ch === '\u007f' || ch === '\b') {
         if (input) {
           input = input.slice(0, -1);
+          filter = input;
+          render();
+        } else if (filter) {
+          filter = '';
           render();
         }
         i++;
@@ -136,9 +147,8 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
           const items = matches();
           if (items.length && (seq === '\u001b[A' || seq === '\u001b[B')) {
             sel = (sel + (seq === '\u001b[A' ? -1 : 1) + items.length) % items.length;
+            input = items[sel].name; // preview the highlighted command on the line
             render();
-          } else if (seq === '\u001b[A' || seq === '\u001b[B') {
-            // no menu; ignore arrows
           }
           i += seq.length;
         } else {
@@ -149,6 +159,8 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
       }
       // printable
       input += ch;
+      filter = input;
+      sel = 0;
       render();
       i++;
     }
@@ -177,6 +189,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     },
     clear() {
       input = '';
+      filter = '';
       pasteBuf = '';
       inPaste = false;
       sel = 0;
