@@ -132,7 +132,7 @@ Self-authored tools run **only** in an isolated **Linux worker** (WSL on Windows
 
 - **Windows:** the worker runs **inside WSL2** (spawned via `wsl.exe`). Requires Node in WSL: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
 - **Linux/VPS:** the worker runs **natively** — no WSL.
-- **Confinement (`MICRODOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` — the system is mounted **read-only** and only the worker's space is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed. Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed. If `bubblewrap` is missing, MicroDot warns and **falls back to the unconfined worker**.
+- **Confinement (`MICRODOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` - the system is mounted **read-only** and only the worker's space is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed. Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed. If `bubblewrap` is missing, MicroDot warns and **falls back to the unconfined worker**. The worker binds the active space read-write when it starts and **re-binds automatically when the active project/space changes** (e.g. a `/project` switch), so the new space stays writable.
 
 There is **no sandbox mode switch and no fallback**: custom tools are sandboxed on every platform. Worker start has a timeout (`MICRODOT_SANDBOX_START_TIMEOUT_MS`); if it expires, the tool is refused.
 
