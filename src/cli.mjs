@@ -57,6 +57,9 @@ const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
 const VERBOSE = (process.env.MICRODOT_VERBOSE ?? 'false') === 'true';
 const busy = createBusy();
 
+// Clear the terminal (screen + scrollback) without touching the conversation.
+const clearScreen = () => process.stdout.write('\u001b[2J\u001b[3J\u001b[H');
+
 // Each worker has its own space: spaces/<worker_name>/ (mission.md + files).
 // Start with NO project unless one is set explicitly (MICRODOT_PROJECT); select
 // one at runtime with /project (which resumes its chat).
@@ -84,6 +87,8 @@ const COMMANDS = [
   { name: '/type', help: "show or set this worker's type" },
   { name: '/mission', help: 'show or set the mission (/ resets to the root mission)' },
   { name: '/reset', help: 'start a new conversation' },
+  { name: '/cls', help: 'clear the screen' },
+  { name: '/clear', help: 'clear the context and the screen' },
   { name: '/shots', help: 'open the latest screenshot' },
   { name: '/help', help: 'show commands' },
   { name: '/exit', help: 'quit' },
@@ -202,6 +207,8 @@ function help() {
   console.log(dim('  /type [name]  show or set this worker\'s type'));
   console.log(dim('  /mission [t]  show or set this space\'s mission.md (/ resets to the root mission)'));
   console.log(dim('  /reset        reset this conversation'));
+  console.log(dim('  /cls          clear the screen'));
+  console.log(dim('  /clear        clear the context and the screen (bare "clear" also works)'));
   console.log(dim('  /shots        open the latest screenshot'));
   console.log(dim(`  /help /exit`));
   if (allowSpawn)
@@ -708,6 +715,20 @@ async function main() {
       } catch (e) {
         console.log(yellow(`  ${e?.message ?? e}`));
       }
+      continue;
+    }
+    if (line === '/cls') {
+      clearScreen();
+      continue;
+    }
+    if (line === '/clear' || line === 'clear') {
+      autosave();
+      chat.id = newChatId();
+      chat.title = '';
+      chat.createdAt = Date.now();
+      messages = [{ role: 'system', content: SYSTEM }];
+      clearScreen();
+      console.log(dim('cleared the context and the screen (previous chat saved — /resume to reopen)'));
       continue;
     }
     if (line === '/reset') {

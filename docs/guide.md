@@ -154,7 +154,7 @@ Sub-agents are **on by default**. A worker gets **`spawn_subagent({ mission, nam
 ## Resuming chats
 Every conversation is saved **per project** — under `<launch dir>/.microdot/chats/<id>.json`, where the launch dir is the folder you started MicroDot from (like Codex/OpenCode key sessions to a cwd).
 
-- **In the REPL:** `/resume` lists saved chats; `/resume <id>` (exact id, unique prefix, or title) loads one. `/name <title>` labels the current chat; `/reset` starts a new chat and saves the old one.
+- **In the REPL:** `/resume` lists saved chats; `/resume <id>` (exact id, unique prefix, or title) loads one. `/name <title>` labels the current chat; `/reset` starts a new chat and saves the old one. `/cls` clears the screen; `/clear` (or bare `clear`) clears the context and the screen (the old chat is saved).
 - **On launch:** `microdot.bat --resume <id>`.
 - Chats are auto-titled from your first message and saved after each turn. Resuming restores the **dialogue**; the worker/space/type stay as launched.
 

@@ -53,7 +53,7 @@ microdot.bat --resume <id>              # resume a saved chat
 | `/skills` | list saved skills |
 | `/type [name]` | show or set this worker's type |
 | `/mission [text]` | show or set this space's `mission.md` (`/` resets to the root mission) |
-| `/reset`, `/shots`, `/help`, `/exit` | |
+| `/reset`, `/cls`, `/clear`, `/shots`, `/help`, `/exit` | `/cls` clears the screen; `/clear` (or bare `clear`) clears the context and the screen |
 
 Keyboard: paste multi-line text directly (Enter runs it); type **`/`** for a command menu (**↑/↓** or **Tab** fill the line, **Enter** runs it); **↑/↓** (with no menu) recall previous inputs; **Esc** stops a running turn; **Ctrl-C** is ignored when idle, and during a turn a second press within a second stops the system.
 
