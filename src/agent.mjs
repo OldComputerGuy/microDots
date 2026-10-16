@@ -4,7 +4,7 @@ import { resolve, relative } from 'node:path';
 
 const SUMMARY_PREFIX = '[CONVERSATION SUMMARY]';
 
-export async function chatStep({ messages, tools, model, apiKey, baseUrl, onToken }) {
+export async function chatStep({ messages, tools, model, apiKey, baseUrl, onToken, signal }) {
   const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
@@ -18,6 +18,7 @@ export async function chatStep({ messages, tools, model, apiKey, baseUrl, onToke
       tool_choice: 'auto',
       stream: true,
     }),
+    signal,
   });
   if (!res.ok) throw new Error(`Model HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
 
@@ -172,10 +173,12 @@ export async function runAgent({
   onTool,
   confirm,
   compact = {},
+  signal,
 }) {
   const cpt = compact.charsPerToken || 4;
   let compactStop = false;
   for (let step = 0; step < maxSteps; step++) {
+    if (signal?.aborted) return '(stopped: interrupted)';
     // Compact before the next model call if the context is over budget — but at
     // most until we hit the floor (summary + kept-recent), then stop trying.
     if (compact.enabled && compact.maxTokens && !compactStop && estTokens(messages, cpt) > compact.maxTokens) {
@@ -194,14 +197,22 @@ export async function runAgent({
       }
     }
 
-    const { content, toolCalls } = await chatStep({
-      messages,
-      tools: tools.definitions,
-      model,
-      apiKey,
-      baseUrl,
-      onToken,
-    });
+    let chat;
+    try {
+      chat = await chatStep({
+        messages,
+        tools: tools.definitions,
+        model,
+        apiKey,
+        baseUrl,
+        onToken,
+        signal,
+      });
+    } catch (e) {
+      if (signal?.aborted || e?.name === 'AbortError') return '(stopped: interrupted)';
+      throw e;
+    }
+    const { content, toolCalls } = chat;
 
     if (!toolCalls.length) {
       if (content) messages.push({ role: 'assistant', content });
@@ -219,6 +230,7 @@ export async function runAgent({
     });
 
     for (const tc of toolCalls) {
+      if (signal?.aborted) return '(stopped: interrupted)';
       let args = {};
       try {
         args = tc.arguments ? JSON.parse(tc.arguments) : {};

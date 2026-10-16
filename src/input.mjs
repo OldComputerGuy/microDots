@@ -6,7 +6,7 @@
 // run it. This is raw mode, so we echo input ourselves (basic append/backspace).
 //
 // ask(prompt) resolves with the submitted text (may contain newlines).
-export function createPrompt({ stdin = process.stdin, stdout = process.stdout } = {}) {
+export function createPrompt({ stdin = process.stdin, stdout = process.stdout, onEscape } = {}) {
   const isTTY = !!stdin.isTTY;
   const DEBUG = process.env.MICRODOT_DEBUG_INPUT === '1';
   const pending = [];
@@ -14,6 +14,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout } 
   let input = '';
   let inPaste = false;
   let pasteBuf = '';
+  let lastPrompt = '';
 
   const write = (s) => {
     if (isTTY) stdout.write(s);
@@ -95,9 +96,14 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout } 
         continue;
       }
       if (ch === '\u001b') {
-        // swallow ANSI sequences (arrow keys etc.) — we don't do cursor editing
+        // ANSI sequence (arrow keys etc.)? swallow it. A bare Esc is a signal.
         const m = s.slice(i).match(/^\u001b\[[0-9;?]*[A-Za-z~]|^\u001bO[A-Za-z]/);
-        i += m ? m[0].length : 1;
+        if (m) {
+          i += m[0].length;
+        } else {
+          onEscape?.();
+          i += 1;
+        }
         continue;
       }
       input += ch;
@@ -108,11 +114,19 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout } 
 
   return {
     ask(prompt) {
+      lastPrompt = prompt || '';
       if (prompt) stdout.write(prompt);
       if (pending.length) return Promise.resolve(pending.shift());
       return new Promise((res) => {
         waiter = res;
       });
+    },
+    // Clear whatever is typed on the current line (used by the Esc handler).
+    clear() {
+      input = '';
+      pasteBuf = '';
+      inPaste = false;
+      if (isTTY) stdout.write(`\r\u001b[2K${lastPrompt}`);
     },
     close() {
       if (isTTY) {

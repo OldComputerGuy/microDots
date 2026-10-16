@@ -74,7 +74,13 @@ let SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
 
 // Paste-aware input: a pasted block fills the prompt and does NOT submit —
 // press Enter to run it. (Bracketed paste; raw mode.)
-const input = createPrompt();
+let activeAbort = null; // AbortController for the running turn (Esc stops it)
+const input = createPrompt({
+  onEscape: () => {
+    if (activeAbort) activeAbort.abort(); // stop the current turn
+    else input.clear(); // idle: clear whatever is typed
+  },
+});
 const ask = (q) => input.ask(q);
 
 // Approval for create_tool (skip with MICRODOT_APPROVE_CREATE_TOOL=false).
@@ -154,6 +160,7 @@ function help() {
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
   console.log(dim('  /project [<name>]    show/load a project (resumes it); new <name> / delete <name> / off'));
   console.log(dim('  (paste multi-line text directly, then press Enter to run it)'));
+  console.log(dim('  (Esc stops a running turn · Ctrl-C exits)'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
@@ -346,6 +353,8 @@ async function main() {
       if (kind === 'call') busy.start(name);
       else busy.set(`${name} · done`);
     };
+    const ac = new AbortController();
+    activeAbort = ac;
     busy.start('thinking');
     try {
       await runAgent({
@@ -356,6 +365,7 @@ async function main() {
         baseUrl,
         textLimit,
         maxSteps,
+        signal: ac.signal,
         onToken: (t) => {
           if (!VERBOSE) busy.stop();
           md.push(t);
@@ -367,12 +377,14 @@ async function main() {
     } catch (e) {
       busy.stop();
       md.flush();
-      console.error(`\n${yellow('error:')} ${e?.message ?? e}`);
+      if (!ac.signal.aborted) console.error(`\n${yellow('error:')} ${e?.message ?? e}`);
     }
+    if (ac.signal.aborted) console.log(dim('\n(interrupted)'));
     md.flush();
     busy.stop();
     process.stdout.write('\n');
     autosave();
+    activeAbort = null;
   }
 
   if (once) {
