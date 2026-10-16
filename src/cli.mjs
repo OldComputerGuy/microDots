@@ -353,6 +353,24 @@ async function main() {
     }
   }
 
+  // On launch, if a project is active and no explicit --resume was given, resume
+  // its most recent chat so you're back in the last context you were using.
+  if (!resumeId && (process.env.MICRODOT_PROJECT || '').trim()) {
+    try {
+      const list = listChats();
+      if (list.length) {
+        const c = loadChat(list[0].id);
+        chat.id = c.id;
+        chat.title = c.title || '';
+        messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
+        console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
+        renderHistory(messages);
+      }
+    } catch (e) {
+      console.error(yellow(`resume failed: ${e?.message ?? e}`));
+    }
+  }
+
   // Switch the active project and re-init the session for it. `fresh` starts a
   // clean chat; otherwise the project's most recent chat is resumed.
   async function loadProject(name, { fresh = false } = {}) {
