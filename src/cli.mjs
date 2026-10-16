@@ -14,7 +14,7 @@ import { makeSpawner } from './spawner.mjs';
 import { stopSandboxWorker } from './tool-sandbox.mjs';
 import { listSkills } from './skills.mjs';
 import { ensureSpace, readMission, writeMission, shotsDir, getSpaceType, setSpaceType, pruneNotes } from './space.mjs';
-import { listProjects, existsProject, createProject, deleteProject, getCurrentProject, setCurrentProject, clearCurrentProject } from './projects.mjs';
+import { listProjects, existsProject, createProject, deleteProject, setCurrentProject, clearCurrentProject } from './projects.mjs';
 import { listWorkerTypes, readWorkerType } from './worker-types.mjs';
 import { newChatId, saveChat, listChats, loadChat } from './chats.mjs';
 import { ensureProject } from './home.mjs';
@@ -58,11 +58,8 @@ const VERBOSE = (process.env.MICRODOT_VERBOSE ?? 'false') === 'true';
 const busy = createBusy();
 
 // Each worker has its own space: spaces/<worker_name>/ (mission.md + files).
-// Resume the remembered project (if any) before laying out paths.
-{
-  const remembered = getCurrentProject();
-  if (remembered && !(process.env.MICRODOT_PROJECT || '').trim()) setCurrentProject(remembered);
-}
+// Start with NO project unless one is set explicitly (MICRODOT_PROJECT); select
+// one at runtime with /project (which resumes its chat).
 ensureProject();
 let spacePath = ensureSpace(agentName);
 let mission = readMission(agentName).trim();

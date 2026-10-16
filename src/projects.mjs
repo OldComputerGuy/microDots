@@ -1,15 +1,14 @@
 // Named projects: a project is a logical workspace (chats, spaces, mission,
 // notes, project-specific tools) identified by NAME — not a folder you navigate.
-// Projects live under a projects root; the current one is remembered on disk
-// (and in MICRODOT_PROJECT) so it can be resumed later.
-import { readdirSync, mkdirSync, rmSync, existsSync, readFileSync, writeFileSync, statSync } from 'node:fs';
+// The active project lives in the MICRODOT_PROJECT env var (set at runtime via
+// /project); MicroDot does NOT auto-load a project at startup.
+import { readdirSync, mkdirSync, rmSync, existsSync, writeFileSync, statSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { projectsRoot } from './home.mjs';
 
 const NAME_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 
 export const projectPath = (name) => resolve(projectsRoot(), name);
-const currentFile = () => resolve(projectsRoot(), '.current');
 
 export function validProjectName(name) {
   const n = String(name || '').trim();
@@ -72,29 +71,21 @@ export function deleteProject(name) {
   return projectPath(n);
 }
 
-// The current project: MICRODOT_PROJECT (env) wins, else the remembered pointer.
+// The current project is just the MICRODOT_PROJECT env var (set via /project).
 export function getCurrentProject() {
-  const env = (process.env.MICRODOT_PROJECT || '').trim();
-  if (env) return env;
-  try {
-    const n = readFileSync(currentFile(), 'utf8').trim();
-    return NAME_RE.test(n) ? n : null;
-  } catch {
-    return null;
-  }
+  return (process.env.MICRODOT_PROJECT || '').trim() || null;
 }
 
 export function setCurrentProject(name) {
   const n = validProjectName(name);
-  mkdirSync(projectsRoot(), { recursive: true });
-  writeFileSync(currentFile(), `${n}\n`);
   process.env.MICRODOT_PROJECT = n;
   return n;
 }
 
 export function clearCurrentProject() {
+  // Remove a legacy .current pointer if one lingers, then drop the env var.
   try {
-    rmSync(currentFile(), { force: true });
+    rmSync(resolve(projectsRoot(), '.current'), { force: true });
   } catch {
     /* ignore */
   }
