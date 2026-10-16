@@ -5,19 +5,23 @@
 // matching commands is shown below the prompt. Up/Down (or Tab) fill the line
 // with the highlighted command; Enter submits whatever is on the line.
 //
+// Editing: the input is a real editable line — Left/Right/Home/End move the
+// cursor, Backspace/Delete edit at the cursor, and typing/pasting inserts at it.
+//
 // ask(prompt) resolves with the submitted text (may contain newlines).
 export function createPrompt({ stdin = process.stdin, stdout = process.stdout, onEscape, onInterrupt, suggest } = {}) {
   const isTTY = !!stdin.isTTY;
   const DEBUG = process.env.MICRODOT_DEBUG_INPUT === '1';
   const pending = [];
   let waiter = null;
-  let input = ''; // what's on the line (and what gets submitted)
-  let filter = ''; // the slash token used to match commands (kept separate so
+  let input = ''; // the line content
+  let cur = 0; // caret index within `input`
+  let filter = ''; // the token used to match suggestions (kept separate so
   let inPaste = false; //   navigating the menu doesn't collapse it)
   let pasteBuf = '';
   let lastPrompt = '';
   let sel = 0;
-  let inputRows = 1; // rows occupied by (prompt tail + input) at the last render
+  let cursorRow = 1; // row (from the top of the rendered region) the caret is on
   let chooser = null; // active list picker: { prompt, options, index, resolve }
   let chooserRows = 0;
 
@@ -33,10 +37,13 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     for (const l of lines) r += Math.max(1, Math.ceil(stripAnsi(l).length / w));
     return Math.max(1, r);
   }
+  function edit(next) {
+    input = next;
+    filter = input;
+    if (cur > input.length) cur = input.length;
+  }
 
   // Suggestions for the current typed token, from the caller's provider.
-  // Items are { label, help?, complete } where `complete` is the full input to
-  // set when chosen. Hidden when the token already equals a single completion.
   function suggestions() {
     if (!filter || filter.includes('\n')) return [];
     let items = [];
@@ -55,27 +62,39 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     const w = cols();
     const items = suggestions();
     if (sel >= items.length) sel = Math.max(0, items.length - 1);
+    if (cur > input.length) cur = input.length;
 
     let out = '';
-    if (inputRows > 1) out += `\u001b[${inputRows - 1}A`; // back to the first input row
+    if (cursorRow > 1) out += `\u001b[${cursorRow - 1}A`; // back to the first row
     out += '\r\u001b[0J';
     const body = promptTail() + input;
     out += body;
 
+    // Where the caret sits (row from the top, and column), accounting for wraps.
+    const prefix = promptTail() + input.slice(0, cur);
+    const plines = prefix.split('\n');
+    const caretRow = rowsOf(plines, w);
+    const lastLen = stripAnsi(plines[plines.length - 1]).length;
+    let caretCol = lastLen % w;
+    if (caretCol === 0 && lastLen > 0) caretCol = w;
+
+    const bodyRows = rowsOf(body.split('\n'), w);
+    let menuRows = 0;
     if (items.length) {
       const mlines = items.map(
         (c, i) => `${i === sel ? '\u203a' : ' '} ${c.label}${c.help ? `  \u001b[2m${c.help}\u001b[0m` : ''}`,
       );
-      const menuRows = rowsOf(mlines, w);
+      menuRows = rowsOf(mlines, w);
       out += '\n' + mlines.join('\n');
-      // put the cursor back on the (last) input row, just after the input
-      out += `\u001b[${menuRows}A\r`;
-      const len = stripAnsi(body).length; // menu only when input is a single line
-      const col = len % w;
-      out += `\u001b[${col === 0 ? w : col}C`;
     }
+    // Move from where printing left the cursor (end of body + menu) to the caret.
+    const up = bodyRows + menuRows - caretRow;
+    if (up > 0) out += `\u001b[${up}A`;
+    out += '\r';
+    if (caretCol > 0) out += `\u001b[${caretCol}C`;
+
     stdout.write(out);
-    inputRows = rowsOf(body.split('\n'), w);
+    cursorRow = caretRow;
   }
 
   // A simple list picker (used by /resume). Draws a prompt + options below the
@@ -101,7 +120,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     }
     chooser = null;
     chooserRows = 0;
-    inputRows = 1;
+    cursorRow = 1;
   }
 
   if (isTTY) {
@@ -173,8 +192,8 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         inPaste = false;
         i += 6;
         const clean = pasteBuf.replace(/\r\n?/g, '\n');
-        input += clean; // fill the buffer, do NOT submit
-        filter = input;
+        edit(input.slice(0, cur) + clean + input.slice(cur)); // insert at caret
+        cur += clean.length;
         render();
         pasteBuf = '';
         continue;
@@ -191,9 +210,10 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         write('\n');
         const value = input; // submit the line as-is
         input = '';
+        cur = 0;
         filter = '';
         sel = 0;
-        inputRows = 1;
+        cursorRow = 1;
         deliver(value);
         i++;
         continue;
@@ -201,19 +221,17 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
       if (ch === '\t') {
         const items = suggestions();
         if (items.length) {
-          input = items[sel].complete; // fill the line (menu stays for more navigation)
+          edit(items[sel].complete);
+          cur = input.length;
           render();
         }
         i++;
         continue;
       }
       if (ch === '\u007f' || ch === '\b') {
-        if (input) {
-          input = input.slice(0, -1);
-          filter = input;
-          render();
-        } else if (filter) {
-          filter = '';
+        if (cur > 0) {
+          edit(input.slice(0, cur - 1) + input.slice(cur));
+          cur--;
           render();
         }
         i++;
@@ -235,8 +253,34 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
           const items = suggestions();
           if (items.length && (seq === '\u001b[A' || seq === '\u001b[B')) {
             sel = (sel + (seq === '\u001b[A' ? -1 : 1) + items.length) % items.length;
-            input = items[sel].complete; // preview the highlighted command on the line
+            edit(items[sel].complete); // preview the highlighted command
+            cur = input.length;
             render();
+          } else if (seq === '\u001b[C') {
+            if (cur < input.length) {
+              cur++;
+              render();
+            }
+          } else if (seq === '\u001b[D') {
+            if (cur > 0) {
+              cur--;
+              render();
+            }
+          } else if (seq === '\u001b[H' || seq === '\u001b[1~' || seq === '\u001b[7~') {
+            if (cur !== 0) {
+              cur = 0;
+              render();
+            }
+          } else if (seq === '\u001b[F' || seq === '\u001b[4~' || seq === '\u001b[8~') {
+            if (cur !== input.length) {
+              cur = input.length;
+              render();
+            }
+          } else if (seq === '\u001b[3~') {
+            if (cur < input.length) {
+              edit(input.slice(0, cur) + input.slice(cur + 1));
+              render();
+            }
           }
           i += seq.length;
         } else {
@@ -245,9 +289,9 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         }
         continue;
       }
-      // printable
-      input += ch;
-      filter = input;
+      // printable → insert at the caret
+      edit(input.slice(0, cur) + ch + input.slice(cur));
+      cur++;
       sel = 0;
       render();
       i++;
@@ -268,7 +312,8 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     ask(prompt) {
       lastPrompt = prompt || '';
       if (prompt) stdout.write(prompt);
-      inputRows = 1;
+      cursorRow = 1;
+      cur = 0;
       sel = 0;
       if (pending.length) return Promise.resolve(pending.shift());
       return new Promise((res) => {
@@ -290,14 +335,15 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     },
     clear() {
       input = '';
+      cur = 0;
       filter = '';
       pasteBuf = '';
       inPaste = false;
       sel = 0;
       if (isTTY) {
-        if (inputRows > 1) stdout.write(`\u001b[${inputRows - 1}A`);
+        if (cursorRow > 1) stdout.write(`\u001b[${cursorRow - 1}A`);
         stdout.write(`\r\u001b[0J${promptTail()}`);
-        inputRows = 1;
+        cursorRow = 1;
       }
     },
     close() {
