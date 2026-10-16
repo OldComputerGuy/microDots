@@ -165,6 +165,23 @@ const BUILTINS = [
   {
     type: 'function',
     function: {
+      name: 'browser_scroll',
+      description:
+        'Scroll your tab: direction up/down/top/bottom by an optional pixel amount, or scroll a CSS selector into view. Returns the scroll position and whether you have reached the bottom. Read-only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          direction: { type: 'string', enum: ['up', 'down', 'top', 'bottom'], description: "Where to scroll (default 'down')" },
+          amount: { type: 'number', description: 'Pixels to scroll for up/down (default 600)' },
+          selector: { type: 'string', description: 'Optional CSS selector to scroll into view (overrides direction)' },
+        },
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
       name: 'browser_close',
       description: 'Close your own tab. The shared browser stays open for other agents.',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
@@ -175,7 +192,7 @@ const BUILTINS = [
     function: {
       name: 'create_tool',
       description:
-        'Create a new tool for yourself. Provide a name, a description, a JSON-Schema `parameters` object, and the JavaScript body of `async function run(args, ctx)`. `return` a JSON-serialisable result. Available at once and saved to ./tools-custom/ for future sessions. The code runs in an isolated Linux worker (WSL on Windows, native on Linux) with ctx.agentId, ctx.fetch(url,opts), ctx.log(...), ctx.fs (a filesystem jailed to the sandbox folder), and ctx.browser.{open,text,url,screenshot,click,type,close} (bridged to the host browser).',
+        'Create a new tool for yourself. Provide a name, a description, a JSON-Schema `parameters` object, and the JavaScript body of `async function run(args, ctx)`. `return` a JSON-serialisable result. Available at once and saved to ./tools-custom/ for future sessions. The code runs in an isolated Linux worker (WSL on Windows, native on Linux) with ctx.agentId, ctx.fetch(url,opts), ctx.log(...), ctx.fs (a filesystem jailed to the sandbox folder), and ctx.browser.{open,text,url,screenshot,click,type,scroll,close} (bridged to the host browser).',
       parameters: {
         type: 'object',
         properties: {
@@ -424,6 +441,8 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
         return await execute('browser_click', { selector: spec.selector });
       case 'browser_type':
         return await execute('browser_type', { selector: spec.selector, text: spec.text });
+      case 'browser_scroll':
+        return await execute('browser_scroll', { direction: spec.direction, amount: spec.amount, selector: spec.selector });
       case 'browser_close':
         return await execute('browser_close', {});
       case 'openPath':
@@ -627,6 +646,30 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
         const p = await page();
         await p.fill(args.selector, args.text, { timeout: 15000 });
         return { typed: args.selector, url: p.url() };
+      }
+      case 'browser_scroll': {
+        const p = await page();
+        if (args.selector) {
+          await p.locator(args.selector).first().scrollIntoViewIfNeeded({ timeout: 15000 });
+        } else {
+          const dir = String(args.direction || 'down').toLowerCase();
+          const amount = Number.isFinite(Number(args.amount)) ? Number(args.amount) : 600;
+          await p.evaluate(
+            ({ dir, amount }) => {
+              if (dir === 'top') window.scrollTo(0, 0);
+              else if (dir === 'bottom')
+                window.scrollTo(0, Math.max(document.body.scrollHeight, document.documentElement.scrollHeight));
+              else window.scrollBy(0, dir === 'up' ? -amount : amount);
+            },
+            { dir, amount },
+          );
+        }
+        const pos = await p.evaluate(() => ({
+          scrollY: Math.round(window.scrollY),
+          innerHeight: window.innerHeight,
+          scrollHeight: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight),
+        }));
+        return { ...pos, atBottom: pos.scrollY + pos.innerHeight >= pos.scrollHeight - 2, url: p.url() };
       }
       case 'browser_close': {
         await host.closeTab();

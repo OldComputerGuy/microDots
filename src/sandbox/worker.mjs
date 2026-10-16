@@ -158,6 +158,7 @@ async function run(msg) {
       screenshot: () => hostCall(id, { op: 'browser_screenshot' }),
       click: (s) => hostCall(id, { op: 'browser_click', selector: String(s) }),
       type: (s, t) => hostCall(id, { op: 'browser_type', selector: String(s), text: String(t) }),
+      scroll: (opts = {}) => hostCall(id, { op: 'browser_scroll', direction: opts.direction, amount: opts.amount, selector: opts.selector }),
       close: () => hostCall(id, { op: 'browser_close' }),
     },
     fetch: async (url, opts) => {
