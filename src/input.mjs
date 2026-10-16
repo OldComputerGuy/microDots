@@ -21,6 +21,9 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
   let pasteBuf = '';
   let lastPrompt = '';
   let sel = 0;
+  const history = []; // submitted inputs this session (commands included)
+  let histIndex = 0; // === history.length => on the "current draft"
+  let draft = '';
   let cursorRow = 1; // row (from the top of the rendered region) the caret is on
   let chooser = null; // active list picker: { prompt, options, index, resolve }
   let chooserRows = 0;
@@ -56,6 +59,23 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     if (!items.length) return [];
     if (items.length === 1 && items[0].complete === filter) return [];
     return items;
+  }
+
+  // Recalls a previous input (Up = older, Down = newer) when the menu isn't up.
+  function historyNav(dir) {
+    if (!history.length) return;
+    if (dir < 0) {
+      if (histIndex === history.length) draft = input; // remember what you were typing
+      if (histIndex === 0) return; // already oldest
+      histIndex--;
+    } else {
+      if (histIndex >= history.length) return; // already at the draft
+      histIndex++;
+    }
+    input = histIndex === history.length ? draft : history[histIndex];
+    cur = input.length;
+    filter = input;
+    render();
   }
 
   function render() {
@@ -210,6 +230,9 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         if (isTTY) stdout.write('\u001b[0J'); // drop the menu
         write('\n');
         const value = input; // submit the line as-is
+        if (value.trim() && history[history.length - 1] !== value) history.push(value);
+        histIndex = history.length;
+        draft = '';
         input = '';
         cur = 0;
         filter = '';
@@ -252,11 +275,15 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         if (m) {
           const seq = m[0];
           const items = suggestions();
-          if (items.length && (seq === '\u001b[A' || seq === '\u001b[B')) {
-            sel = (sel + (seq === '\u001b[A' ? -1 : 1) + items.length) % items.length;
-            edit(items[sel].complete); // preview the highlighted command
-            cur = input.length;
-            render();
+          if (seq === '\u001b[A' || seq === '\u001b[B') {
+            if (items.length) {
+              sel = (sel + (seq === '\u001b[A' ? -1 : 1) + items.length) % items.length;
+              edit(items[sel].complete); // preview the highlighted command
+              cur = input.length;
+              render();
+            } else {
+              historyNav(seq === '\u001b[A' ? -1 : 1); // shell-style history
+            }
           } else if (seq === '\u001b[C') {
             if (cur < input.length) {
               cur++;
