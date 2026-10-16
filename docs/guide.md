@@ -114,6 +114,12 @@ MicroDot can **write its own tools** and use them immediately.
 - Tools are saved **without asking** by default. Optionally set `MICRODOT_APPROVE_CREATE_TOOL=true` to be prompted (y/N) when a tool's code touches risky capabilities (`child_process`, `require`, dynamic `import`, direct `fs`/`fetch`, absolute paths, `process`, `eval`).
 In the sandbox, `ctx` gives `agentId`, `fetch(url,opts)`, `log(...)`, `fs` (jailed to the worker's space), and `browser.*` (bridged to the host browser).
 
+**Tool management model (important):**
+- `tools/` is **host-managed**. The sandbox worker sees the project read-only, so a tool **cannot write or delete files in `tools/`** (it gets `EROFS`). This is deliberate — sandboxed code must not modify the tool set.
+- The **single source of truth** is `<project>/.microdot/tools/<name>.mjs`, and it is edited **only** through `create_tool` (reuse a name to overwrite) / `delete_tool`. Don't keep copies elsewhere or "install" functions to copy files into `tools/`.
+- A file whose name starts with **`_`** is **parked**: it stays on disk but is **not loaded** (kept out of the model's tool list). Prefix throwaway probes with `_dbg_` (or delete them); rename to activate.
+- Keep genuinely reusable helpers (e.g. probes you rely on) under a normal name; they'll load every session.
+
 Example tool file (the `code` is the body of the async function; it runs only in the worker):
 ```js
 export const definition = { type:'function', function:{ name:'slugify', description:'…', parameters:{ type:'object', properties:{ text:{type:'string'} }, required:['text'] } } };

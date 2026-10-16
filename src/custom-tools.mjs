@@ -119,6 +119,9 @@ export async function loadCustomTools() {
       continue;
     }
     for (const f of files) {
+      // Convention: a leading "_" parks a tool — the file stays on disk but is
+      // not loaded (kept out of the model's tool list). Rename it to activate.
+      if (f.startsWith('_')) continue;
       try {
         const { definition, code } = await importFile(join(dir, f));
         out.set(definition.function.name ?? f.replace(/\.mjs$/i, ''), { definition, code });
