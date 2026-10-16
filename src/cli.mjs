@@ -76,7 +76,23 @@ let SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
 // press Enter to run it. (Bracketed paste; raw mode.)
 let activeAbort = null; // AbortController for the running turn (Esc stops it)
 let onInterrupt = null; // Ctrl-C handler, installed in main()
+const COMMANDS = [
+  { name: '/new', help: 'open a new worker' },
+  { name: '/project', help: 'show/load/delete a project' },
+  { name: '/resume', help: 'list or resume a chat' },
+  { name: '/name', help: "set this chat's title" },
+  { name: '/tools', help: 'list built-in and custom tools' },
+  { name: '/delete', help: 'delete a custom tool' },
+  { name: '/skills', help: 'list saved skills' },
+  { name: '/type', help: "show or set this worker's type" },
+  { name: '/mission', help: 'show or set the mission' },
+  { name: '/reset', help: 'start a new conversation' },
+  { name: '/shots', help: 'open the latest screenshot' },
+  { name: '/help', help: 'show commands' },
+  { name: '/exit', help: 'quit' },
+];
 const input = createPrompt({
+  commands: COMMANDS,
   onEscape: () => {
     if (activeAbort) activeAbort.abort(); // stop the current turn
     else input.clear(); // idle: clear whatever is typed
@@ -162,6 +178,7 @@ function help() {
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
   console.log(dim('  /project [<name>]    show/load a project (resumes it); new <name> / delete <name> / off'));
   console.log(dim('  (paste multi-line text directly, then press Enter to run it)'));
+  console.log(dim('  (type / for a command menu — Tab completes, Up/Down select, Enter runs)'));
   console.log(dim('  (Esc stops a running turn · while it runs, Ctrl-C again stops; idle Ctrl-C is ignored)'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));

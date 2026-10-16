@@ -55,7 +55,7 @@ microdot.bat --resume <id>              # resume a saved chat
 | `/mission [text]` | show or set this space's `mission.md` |
 | `/reset`, `/shots`, `/help`, `/exit` | |
 
-Keyboard: paste multi-line text directly (Enter runs it); **Esc** stops a running turn; **Ctrl-C** is ignored when idle, and during a turn a second press within a second stops the system.
+Keyboard: paste multi-line text directly (Enter runs it); type **`/`** for a command menu (**Tab** completes, **↑/↓** select, **Enter** runs); **Esc** stops a running turn; **Ctrl-C** is ignored when idle, and during a turn a second press within a second stops the system.
 
 ## Use as a library
 ```js
