@@ -23,9 +23,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // ---- in-process cache + counters ---------------------------------------
 const CACHE = new Map(); // key -> results
 const MAX_CACHE = 200;
-let searches = 0;
-let fetches = 0;
-let cacheHits = 0;
+let searches = 0; // non-cached searches this session (for MICRODOT_SEARCH_MAX)
 
 const cacheKey = (kind, payload) => `${kind}|${JSON.stringify(payload)}`;
 function cacheGet(key) {
@@ -39,16 +37,6 @@ function cacheGet(key) {
 function cacheSet(key, val) {
   if (CACHE.size >= MAX_CACHE) CACHE.delete(CACHE.keys().next().value);
   CACHE.set(key, val);
-}
-
-export function parallelStats() {
-  return { searches, fetches, cacheHits, cached: CACHE.size };
-}
-export function resetParallelStats() {
-  searches = 0;
-  fetches = 0;
-  cacheHits = 0;
-  CACHE.clear();
 }
 
 const maxSearches = () => Number(process.env.MICRODOT_SEARCH_MAX ?? 0) || 0; // 0 = unlimited
@@ -122,10 +110,7 @@ export async function parallelSearch({ query, objective, limit = 5, timeoutMs = 
 
   const key = cacheKey('search', { obj, q: String(query || obj), limit });
   const hit = cacheGet(key);
-  if (hit) {
-    cacheHits++;
-    return hit.slice(0, limit);
-  }
+  if (hit) return hit.slice(0, limit);
 
   const cap = maxSearches();
   if (cap && searches >= cap) {
@@ -148,12 +133,8 @@ export async function parallelFetch({ urls, objective, query, limit = 5, timeout
   const obj = String(objective ?? '').trim();
   const key = cacheKey('fetch', { urls: urlList, obj, limit });
   const hit = cacheGet(key);
-  if (hit) {
-    cacheHits++;
-    return hit.slice(0, limit);
-  }
+  if (hit) return hit.slice(0, limit);
 
-  fetches++;
   const results = await callTool(
     'web_fetch',
     {

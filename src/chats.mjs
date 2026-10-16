@@ -1,6 +1,6 @@
 // Saved conversations ("chats") so a session can be resumed later.
 // One JSON file per chat in ./chats/<id>.json.
-import { readdirSync, readFileSync, writeFileSync, mkdirSync, rmSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { projectDir } from './home.mjs';
 
@@ -53,9 +53,4 @@ export function loadChat(idOrMatch, dir = chatsDir()) {
     list.find((c) => (c.title || '').toLowerCase().includes(key.toLowerCase()));
   if (!meta) throw new Error(`no chat matching "${key}"`);
   return JSON.parse(readFileSync(join(dir, `${meta.id}.json`), 'utf8'));
-}
-
-export function deleteChat(id, dir = chatsDir()) {
-  rmSync(chatFile(dir, id), { force: true });
-  return chatFile(dir, id);
 }

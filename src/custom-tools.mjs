@@ -1,8 +1,7 @@
 // Custom tools: MicroDot can author new tools that it (and future sessions) can call.
 // Each tool is a standalone ES module:
 //   export const definition = { type:'function', function:{ name, description, parameters } };
-//   export const code = "...";          // shipped to the sandbox
-//   export async function run(args, ctx) { ... return <json>; }
+//   export const code = "...";          // the body of async run(args, ctx), run in the sandbox
 //
 // Layered: engine tools (<install>/tools-custom) are shared; project tools
 // (<project>/.microdot/tools) override them by name. New tools are written to

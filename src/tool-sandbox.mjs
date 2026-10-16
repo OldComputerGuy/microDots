@@ -34,10 +34,6 @@ export function sandboxToHostPath(p) {
   return `${m[1].toUpperCase()}:\\${m[2].replace(/\//g, '\\')}`;
 }
 
-// Back-compat aliases.
-export const toWslPath = hostToSandboxPath;
-export const toWinPath = sandboxToHostPath;
-
 function commandExists(cmd) {
   try {
     return spawnSync('sh', ['-c', `command -v ${cmd}`], { stdio: 'ignore' }).status === 0;
@@ -294,7 +290,3 @@ export function stopSandboxWorker() {
   readyResolve = null;
   boundWorkspace = null;
 }
-
-// Back-compat aliases.
-export const runWslTool = runSandboxedTool;
-export const stopWslWorker = stopSandboxWorker;
