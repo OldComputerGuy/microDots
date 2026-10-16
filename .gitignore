@@ -16,3 +16,7 @@ chats/
 .microdot/
 launch-plan.json
 custom-tools-backup.zip
+
+# Local-only planning notes (not published)
+docs/plan.md
+docs/launch.md
