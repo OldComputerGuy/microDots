@@ -6,19 +6,17 @@
 // Project holds chats, spaces, and any project-specific tools/skills/worker-types.
 import { fileURLToPath } from 'node:url';
 import { resolve, dirname } from 'node:path';
-import { homedir } from 'node:os';
 import { mkdirSync, existsSync, writeFileSync } from 'node:fs';
 
 const here = dirname(fileURLToPath(import.meta.url)); // .../<install>/src
 
 export const engineDir = () => resolve(process.env.MICRODOT_HOME || resolve(here, '..'));
 
-// User data lives OUTSIDE the install dir, so projects never sit in the code
-// checkout. Override the whole thing with MICRODOT_DATA_DIR.
-export const userDataDir = () => resolve(process.env.MICRODOT_DATA_DIR || resolve(homedir(), '.microdot'));
+// Data lives in the install's .microdot (gitignored). Override with MICRODOT_DATA_DIR.
+export const dataDir = () => resolve(process.env.MICRODOT_DATA_DIR || resolve(engineDir(), '.microdot'));
 
 // Where named projects live (override with MICRODOT_PROJECTS_DIR).
-export const projectsRoot = () => resolve(process.env.MICRODOT_PROJECTS_DIR || resolve(userDataDir(), 'projects'));
+export const projectsRoot = () => resolve(process.env.MICRODOT_PROJECTS_DIR || resolve(dataDir(), 'projects'));
 
 // The project layer: explicit MICRODOT_PROJECT_DIR override, else a named project
 // (MICRODOT_PROJECT) under the projects root, else the legacy <launchDir>/.microdot.
