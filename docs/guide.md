@@ -36,7 +36,8 @@ experiment) without shuffling directories.
 - `/project delete <name>` removes one (not the current).
 - `/project off` returns to the launch folder.
 - The current project is remembered across launches (a `.current` pointer under
-  the projects root), so a restart drops you back into that project's latest chat.
+  the projects root), so a restart reopens that project — but with a **fresh
+  chat**; reopen a previous one with `/project` (picker) or `/resume`.
 
 Storage still lives on disk (`<projectsRoot>/<name>/`), but you only ever refer
 to it by name. With no project set, MicroDot keeps the legacy layout
