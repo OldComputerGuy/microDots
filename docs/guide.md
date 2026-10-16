@@ -111,15 +111,12 @@ MicroDot can **write its own tools** and use them immediately.
 - Saved tools **auto-load** at startup, so they persist across sessions.
 - Manage them with **`list_tools`** (built-ins + your custom tools) and **`delete_tool`** (removes the tool and its file).
 - **Approval is pattern-gated:** harmless tools are saved silently; a tool whose code touches risky capabilities (`child_process`, `require`, dynamic `import`, direct `fs`/`fetch`, absolute paths, `process`, `eval`) prompts for y/N first. Disable with `MICRODOT_APPROVE_CREATE_TOOL=false`.
-- In-process `ctx` gives `page()`, `agentId`, `clip`, `textLimit`, `host`, plus `fetch` and dynamic `import`.
+In the sandbox, `ctx` gives `agentId`, `fetch(url,opts)`, `log(...)`, `fs` (jailed to the worker's space), and `browser.*` (bridged to the host browser).
 
-Example tool file:
+Example tool file (the `code` is the body of the async function; it runs only in the worker):
 ```js
 export const definition = { type:'function', function:{ name:'slugify', description:'…', parameters:{ type:'object', properties:{ text:{type:'string'} }, required:['text'] } } };
 export const code = "return { slug: String(args.text).toLowerCase().replace(/[^a-z0-9]+/g,'-') };";
-export async function run(args, ctx) {
-  return { slug: String(args.text).toLowerCase().replace(/[^a-z0-9]+/g,'-') };
-}
 ```
 
 ## Tool sandbox backend

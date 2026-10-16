@@ -461,7 +461,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
       parameters,
       code: args.code,
     });
-    const { definition, run, code } = await importTool(name);
+    const { definition, code } = await importTool(name);
 
     const existing = custom.get(name);
     if (existing) {
@@ -471,7 +471,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
     } else {
       definitions.push(definition);
     }
-    custom.set(name, { definition, run, code });
+    custom.set(name, { definition, code });
 
     return {
       created: name,
@@ -485,25 +485,25 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
   async function execute(name, args, { confirm } = {}) {
     const c = custom.get(name);
     if (c) {
-      if (c.code) {
-        try {
-          return await runSandboxedTool({
-            code: c.code,
-            args,
-            root,
-            agentId,
-            bridge: sandboxBridge,
-            log: (m) => console.log(`  [${name}] ${m}`),
-            textLimit,
-          });
-        } catch (e) {
-          throw new Error(
-            `tool sandbox failed (${String(e?.message ?? e)}) — custom tools run only in the isolated Linux worker. ` +
-              `Check WSL (Windows) / Node+bubblewrap (Linux).`,
-          );
-        }
+      if (!c.code) {
+        throw new Error(`custom tool "${name}" has no sandbox code — refusing to run it on the host.`);
       }
-      return await c.run(args, ctx);
+      try {
+        return await runSandboxedTool({
+          code: c.code,
+          args,
+          root,
+          agentId,
+          bridge: sandboxBridge,
+          log: (m) => console.log(`  [${name}] ${m}`),
+          textLimit,
+        });
+      } catch (e) {
+        throw new Error(
+          `tool sandbox failed (${String(e?.message ?? e)}) — custom tools run only in the isolated Linux worker. ` +
+            `Check WSL (Windows) / Node+bubblewrap (Linux).`,
+        );
+      }
     }
 
     // Host-registered tools (provided by the embedding app).

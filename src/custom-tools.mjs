@@ -58,13 +58,9 @@ function sourceFor({ name, description, parameters, code }) {
   const definition = { type: 'function', function: { name, description, parameters } };
   return [
     `// MicroDot custom tool "${name}" - auto-generated, safe to edit or delete.`,
-    `// run() is used by the in-process backend; code is shipped to the sandbox.`,
+    `// The code below runs ONLY in the isolated Linux sandbox worker (WSL on Windows).`,
     `export const definition = ${JSON.stringify(definition, null, 2)};`,
     `export const code = ${JSON.stringify(code)};`,
-    ``,
-    `export async function run(args, ctx) {`,
-    code,
-    `}`,
     ``,
   ].join('\n');
 }
@@ -91,10 +87,10 @@ export function deleteTool(name) {
 async function importFile(file) {
   const url = `${pathToFileURL(file).href}?v=${Date.now()}`;
   const mod = await import(url);
-  if (typeof mod.run !== 'function' || !mod.definition?.function) {
-    throw new Error(`tool at ${file} must export run() and definition`);
+  if (!mod.definition?.function || typeof mod.code !== 'string' || !mod.code.trim()) {
+    throw new Error(`tool at ${file} must export definition and non-empty code`);
   }
-  return { definition: mod.definition, run: mod.run, code: typeof mod.code === 'string' ? mod.code : null };
+  return { definition: mod.definition, code: mod.code };
 }
 
 // Search layers project-first.
@@ -124,8 +120,8 @@ export async function loadCustomTools() {
     }
     for (const f of files) {
       try {
-        const { definition, run, code } = await importFile(join(dir, f));
-        out.set(definition.function.name ?? f.replace(/\.mjs$/i, ''), { definition, run, code });
+        const { definition, code } = await importFile(join(dir, f));
+        out.set(definition.function.name ?? f.replace(/\.mjs$/i, ''), { definition, code });
       } catch (e) {
         console.error(`MicroDot: could not load custom tool ${f}: ${e?.message ?? e}`);
       }
