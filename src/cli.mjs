@@ -1,6 +1,6 @@
 // MicroDot CLI: one agent per process, all attached to one shared Chromium.
 // `/new` opens a new terminal (a new agent).
-import readline from 'node:readline';
+import { createPrompt } from './prompt.mjs';
 import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { execFile } from 'node:child_process';
@@ -72,50 +72,10 @@ setSpaceType(agentName, workerType);
 
 let SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-
-// Multiline paste: a terminal delivers a pasted block as a rapid burst of lines.
-// Collect them for a short window and submit the whole block as ONE input,
-// instead of running one turn/command per line. MICRODOT_PASTE_MS=0 restores
-// the old per-line behaviour.
-const PASTE_MS = Math.max(0, Number(process.env.MICRODOT_PASTE_MS ?? 200) || 0);
-const pendingInputs = [];
-let waitingForInput = null;
-let pasteBuf = [];
-let pasteTimer = null;
-
-function deliverInput(text) {
-  if (waitingForInput) {
-    const w = waitingForInput;
-    waitingForInput = null;
-    w(text);
-  } else {
-    pendingInputs.push(text);
-  }
-}
-function flushPaste() {
-  pasteTimer = null;
-  const text = pasteBuf.join('\n');
-  pasteBuf = [];
-  deliverInput(text);
-}
-rl.on('line', (line) => {
-  pasteBuf.push(line);
-  if (pasteTimer) clearTimeout(pasteTimer);
-  if (PASTE_MS > 0) pasteTimer = setTimeout(flushPaste, PASTE_MS);
-  else flushPaste();
-});
-
-const ask = (q) => {
-  if (q) {
-    rl.setPrompt(q);
-    rl.prompt();
-  }
-  if (pendingInputs.length) return Promise.resolve(pendingInputs.shift());
-  return new Promise((res) => {
-    waitingForInput = res;
-  });
-};
+// Paste-aware input: a pasted block fills the prompt and does NOT submit —
+// press Enter to run it. (Bracketed paste; raw mode.)
+const input = createPrompt();
+const ask = (q) => input.ask(q);
 
 // Approval for create_tool (skip with MICRODOT_APPROVE_CREATE_TOOL=false).
 async function confirmCreate(action, code) {
@@ -194,7 +154,7 @@ function help() {
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
   console.log(dim('  /project [<name>]    show/load a project (resumes it); new <name> / delete <name> / off'));
   console.log(dim('  /paste        paste a multi-line prompt (end with a line containing only ".")'));
-  console.log(dim('  (or just paste multi-line text directly — it is sent as one prompt)'));
+  console.log(dim('  (or paste multi-line text directly, then press Enter to run it)'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
@@ -423,7 +383,7 @@ async function main() {
     }
     await turn(prompt);
     await cleanup();
-    rl.close();
+    input.close();
     return;
   }
 
@@ -643,7 +603,7 @@ async function main() {
     await turn(line);
   }
   await cleanup();
-  rl.close();
+  input.close();
 }
 
 main();

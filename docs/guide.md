@@ -224,7 +224,6 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_PRUNE_NOTES` | `true` | prune a space's `notes/` on exit |
 | `MICRODOT_NOTES_KEEP` | `400` | keep the newest N note files |
 | `MICRODOT_NOTES_MAX_MB` | `25` | notes size budget (MB) |
-| `MICRODOT_PASTE_MS` | `200` | window to collect a pasted block and send it as one prompt (0 = per-line) |
 | `MICRODOT_MAX_STEPS` | `12` | max tool-loop steps per turn |
 | `MICRODOT_TEXT_LIMIT` | `32768` | max chars of a tool result fed to the model |
 | `MICRODOT_TEXT_TOKENS` | — | budget tool results in tokens instead |

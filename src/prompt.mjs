@@ -1,31 +1,123 @@
-// System-prompt builder, shared by the CLI and the library runtime.
-import { readWorkerType } from './worker-types.mjs';
-import { listSkills } from './skills.mjs';
+// Paste-aware line input.
+//
+// In a TTY we enable bracketed paste (\x1b[?2004h). The terminal then wraps a
+// pasted block in \x1b[200~ … \x1b[201~, so we can tell a paste from typing:
+// a paste fills the input buffer and does NOT submit — the user presses Enter to
+// run it. This is raw mode, so we echo input ourselves (basic append/backspace).
+//
+// ask(prompt) resolves with the submitted text (may contain newlines).
+export function createPrompt({ stdin = process.stdin, stdout = process.stdout } = {}) {
+  const isTTY = !!stdin.isTTY;
+  const pending = [];
+  let waiter = null;
+  let input = '';
+  let inPaste = false;
+  let pasteBuf = '';
 
-export const BASE_PROMPT = `You are MicroDot, a small autonomous agent with your own browser tab in a shared Chromium. You have tools to fetch the web and to drive your tab. Be concise and factual.
-- Prefer web_search for current information; use http_get for plain pages; use the browser for pages that need JavaScript or interaction.
-- Always report what you actually observed. Never invent page content.
-- When your task is complete, answer the user directly in a short summary.`;
+  const write = (s) => {
+    if (isTTY) stdout.write(s);
+  };
 
-export function buildSystem({ space, type = 'default', mission, context, deliverables, isSub } = {}) {
-  const typeText = readWorkerType(type).trim();
-  let s = BASE_PROMPT;
-  s += typeText
-    ? `\n\nYour worker type "${type}" (how you behave):\n${typeText}`
-    : `\n\nYour worker type is "${type}" (no description file found in ./worker-types/).`;
-  s += `\n\nYour space: ${space}\nKeep the files you produce (documents, notes, outputs, downloads) here.`;
-  if (mission) s += `\n\nYour mission (mission.md):\n${mission}`;
-  const skills = listSkills();
-  if (skills.length) {
-    s += `\n\nSaved skills (call read_skill to load one, then follow its steps):\n${skills
-      .map((x) => `- ${x.name}: ${x.description}`)
-      .join('\n')}`;
+  function deliver(value) {
+    if (waiter) {
+      const w = waiter;
+      waiter = null;
+      w(value);
+    } else {
+      pending.push(value);
+    }
   }
-  if (isSub) {
-    s += `\n\nYou are a sub-agent, working autonomously on ONE mission.`;
-    if (context) s += `\n\nContext from your parent:\n${context}`;
-    if (deliverables) s += `\n\nDeliverables your parent needs:\n${deliverables}`;
-    s += `\n\nWhen you finish, write report.json in your space with { summary, findings:[..], sources:[{title,url}], artifacts:[..], children:[..] }, write a readable report.md, then reply with a concise summary. If part of the mission needs deeper work you may call spawn_subagent (subject to limits) and include its digest under children[].`;
+
+  if (isTTY) {
+    try {
+      stdin.setRawMode(true);
+    } catch {
+      /* not a raw-capable tty */
+    }
+    stdout.write('\x1b[?2004h'); // ask the terminal to bracket pastes
   }
-  return s;
+  stdin.setEncoding?.('utf8');
+  stdin.resume?.();
+
+  stdin.on('data', (chunk) => {
+    const s = String(chunk);
+    let i = 0;
+    while (i < s.length) {
+      if (!inPaste && s.startsWith('\x1b[200~', i)) {
+        inPaste = true;
+        pasteBuf = '';
+        i += 6;
+        continue;
+      }
+      if (inPaste && s.startsWith('\x1b[201~', i)) {
+        inPaste = false;
+        i += 6;
+        input += pasteBuf; // fill the buffer, do NOT submit
+        write(pasteBuf);
+        pasteBuf = '';
+        continue;
+      }
+      if (inPaste) {
+        pasteBuf += s[i];
+        i++;
+        continue;
+      }
+      const ch = s[i];
+      if (ch === '\r' || ch === '\n') {
+        write('\n');
+        const value = input;
+        input = '';
+        deliver(value);
+        i++;
+        continue;
+      }
+      if (ch === '\u007f' || ch === '\b') {
+        if (input) {
+          input = input.slice(0, -1);
+          write('\b \b');
+        }
+        i++;
+        continue;
+      }
+      if (ch === '\u0003') {
+        process.emit('SIGINT'); // Ctrl-C
+        i++;
+        continue;
+      }
+      if (ch === '\u0004') {
+        i++; // Ctrl-D: ignore (use /exit)
+        continue;
+      }
+      if (ch === '\u001b') {
+        // swallow ANSI sequences (arrow keys etc.) — we don't do cursor editing
+        const m = s.slice(i).match(/^\u001b\[[0-9;?]*[A-Za-z~]|^\u001bO[A-Za-z]/);
+        i += m ? m[0].length : 1;
+        continue;
+      }
+      input += ch;
+      write(ch);
+      i++;
+    }
+  });
+
+  return {
+    ask(prompt) {
+      if (prompt) stdout.write(prompt);
+      if (pending.length) return Promise.resolve(pending.shift());
+      return new Promise((res) => {
+        waiter = res;
+      });
+    },
+    close() {
+      if (isTTY) {
+        stdout.write('\x1b[?2004l');
+        try {
+          stdin.setRawMode(false);
+        } catch {
+          /* ignore */
+        }
+      }
+      stdin.pause?.();
+    },
+  };
 }
