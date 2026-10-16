@@ -19,10 +19,8 @@ prefer to stay anonymous.
 
 - **The agent executes code.** Self-authored tools (`create_tool`) run **only** in
   a Linux worker (WSL on Windows, native on Linux), optionally under `bubblewrap`.
-  If the worker can't start, custom tools are **refused** — there is no in-process
-  fallback (`MICRODOT_TOOL_SANDBOX=auto` fails closed). Setting it to `none`
-  deliberately runs custom tools in-process with your privileges; don't do that in
-  untrusted settings.
+  There is no in-process fallback: if the worker can't start, custom tools are
+  refused. (Built-in tools run on the host.)
 - **Web content is untrusted input.** The agent browses and fetches pages; treat
   prompt-injection from fetched pages as a real risk. Don't give a Dot
   credentials or access it doesn't need.

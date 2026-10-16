@@ -25,7 +25,6 @@ export async function createRuntime(opts = {}) {
     browser = 'on-demand', // 'off' | 'on-demand' | 'always'
     headless = (process.env.MICRODOT_HEADLESS ?? 'true') !== 'false',
     isolate = false,
-    sandbox = process.env.MICRODOT_TOOL_SANDBOX ?? 'auto',
     textLimit = Number(process.env.MICRODOT_TEXT_LIMIT ?? 32768),
     maxSteps = Number(process.env.MICRODOT_MAX_STEPS ?? 12),
     allowSpawn = true,
@@ -44,7 +43,6 @@ export async function createRuntime(opts = {}) {
   if (!apiKey) throw new Error('createRuntime: apiKey (or OPENROUTER_API_KEY) is required');
   if (dataDir) process.env.MICRODOT_LAUNCH_DIR = resolve(dataDir);
   process.env.MICRODOT_MODEL = model;
-  process.env.MICRODOT_TOOL_SANDBOX = sandbox;
   process.env.MICRODOT_ALLOW_SPAWN = String(allowSpawn);
   ensureProject();
 
@@ -98,7 +96,6 @@ export async function createRuntime(opts = {}) {
     maxAgents,
     maxConcurrent,
     allowSpawn,
-    sandbox,
     headless,
     isolate,
     debug,

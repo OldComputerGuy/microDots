@@ -26,7 +26,6 @@ export function makeSpawner(config) {
     maxAgents = 16,
     maxConcurrent = 8,
     allowSpawn = true,
-    sandbox = 'auto',
     headless = true,
     isolate = false,
     debug = false,

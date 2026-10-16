@@ -175,7 +175,7 @@ const BUILTINS = [
     function: {
       name: 'create_tool',
       description:
-        'Create a new tool for yourself. Provide a name, a description, a JSON-Schema `parameters` object, and the JavaScript body of `async function run(args, ctx)`. `return` a JSON-serialisable result. Available at once and saved to ./tools-custom/ for future sessions. ctx always has agentId, fetch(url,opts), log(...). In the WSL sandbox it also has ctx.fs (a filesystem jailed to the sandbox folder) and ctx.browser.{open,text,url,screenshot,click,type,close}. In in-process mode it has page() (your browser tab), host, clip, textLimit, openPath and import().',
+        'Create a new tool for yourself. Provide a name, a description, a JSON-Schema `parameters` object, and the JavaScript body of `async function run(args, ctx)`. `return` a JSON-serialisable result. Available at once and saved to ./tools-custom/ for future sessions. The code runs in an isolated Linux worker (WSL on Windows, native on Linux) with ctx.agentId, ctx.fetch(url,opts), ctx.log(...), ctx.fs (a filesystem jailed to the sandbox folder), and ctx.browser.{open,text,url,screenshot,click,type,close} (bridged to the host browser).',
       parameters: {
         type: 'object',
         properties: {
@@ -378,11 +378,12 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
   const clip = (s) => (typeof s === 'string' ? s.slice(0, textLimit) : '');
   const page = () => host.getPage();
   const dir = customDir();
-  const sandboxMode = (process.env.MICRODOT_TOOL_SANDBOX ?? 'auto').toLowerCase();
-  const useSandbox = sandboxMode !== 'none';
   const root = space ? resolve(space) : spaceDir(agentId);
   mkdirSync(root, { recursive: true });
-  const backendName = (code) => (useSandbox && code ? (process.platform === 'win32' ? 'wsl' : 'sandbox') : 'in-process');
+  // Custom (self-authored) tools run ONLY in the isolated Linux worker — WSL on
+  // Windows, native (optionally bubblewrap) on Linux. There is no in-process
+  // fallback, on any platform.
+  const backendName = () => (process.platform === 'win32' ? 'wsl' : 'sandbox');
 
   // Custom tools already on disk (name -> { definition, run, code }).
   const custom = await loadCustomTools();
@@ -475,7 +476,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
     return {
       created: name,
       savedTo: file,
-      backend: backendName(code),
+      backend: backendName(),
       schema: definition.function.parameters,
       note: 'Registered. You can call it now and it will load automatically in future sessions.',
     };
@@ -484,7 +485,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
   async function execute(name, args, { confirm } = {}) {
     const c = custom.get(name);
     if (c) {
-      if (useSandbox && c.code) {
+      if (c.code) {
         try {
           return await runSandboxedTool({
             code: c.code,
@@ -496,17 +497,10 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
             textLimit,
           });
         } catch (e) {
-          const msg = String(e?.message ?? e);
-          // Fail CLOSED: never silently run generated code on the host. If the
-          // sandbox can't start, refuse the tool. (MICRODOT_TOOL_SANDBOX=none is
-          // the only way to run custom tools in-process — an explicit choice.)
-          if (sandboxMode === 'auto' && /sandbox worker|did not start/i.test(msg)) {
-            throw new Error(
-              `tool sandbox unavailable (${msg}) — refusing to run "${name}" in-process. ` +
-                `Enable the sandbox (WSL/bwrap), or set MICRODOT_TOOL_SANDBOX=none to allow in-process execution at your own risk.`,
-            );
-          }
-          throw e;
+          throw new Error(
+            `tool sandbox failed (${String(e?.message ?? e)}) — custom tools run only in the isolated Linux worker. ` +
+              `Check WSL (Windows) / Node+bubblewrap (Linux).`,
+          );
         }
       }
       return await c.run(args, ctx);
@@ -563,7 +557,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
           custom: [...custom.values()].map((c) => ({
             name: c.definition.function.name,
             description: c.definition.function.description,
-            backend: backendName(c.code),
+            backend: backendName(),
           })),
         };
       }

@@ -123,13 +123,13 @@ export async function run(args, ctx) {
 ```
 
 ## Tool sandbox backend
-By default (`MICRODOT_TOOL_SANDBOX=auto`) self-authored tools run in an isolated **Linux worker** (WSL on Windows, native on Linux); if the worker can't start, custom tools are **refused** (fail closed). One worker script, two launchers:
+Self-authored tools run **only** in an isolated **Linux worker** (WSL on Windows, native on Linux) — there is no in-process/host path on any platform. If the worker can't start, custom tools are **refused**. One worker script, two launchers:
 
 - **Windows:** the worker runs **inside WSL2** (spawned via `wsl.exe`). Requires Node in WSL: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
 - **Linux/VPS:** the worker runs **natively** — no WSL.
 - **Confinement (`MICRODOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` — the system is mounted **read-only** and only the worker's space is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed. Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed. If `bubblewrap` is missing, MicroDot warns and **falls back to the unconfined worker**.
 
-Modes: `auto` (default) = always the sandbox — if it can't start, custom tools are refused (no in-process fallback); `none` = run custom tools in-process (full local privileges — explicit, risky); `wsl`/`sandbox` = always the sandbox. Worker start has a timeout (`MICRODOT_SANDBOX_START_TIMEOUT_MS`).
+There is **no sandbox mode switch and no fallback**: custom tools are sandboxed on every platform. Worker start has a timeout (`MICRODOT_SANDBOX_START_TIMEOUT_MS`); if it expires, the tool is refused.
 
 In the sandbox:
 - `ctx.fs` is jailed to the worker's space (`<project>/.microdot/spaces/<worker>/`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (shared Chromium / OS viewer).
@@ -206,8 +206,7 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_DEBUG` | `false` | keep sub-agent spaces + verbose logs |
 | `PARALLEL_API_KEY` | - | optional Parallel search key |
 | `MICRODOT_SEARCH_MAX` | `0` | cap `web_search` calls per session (0 = unlimited); guards Parallel cost |
-| `MICRODOT_TOOL_SANDBOX` | `auto` | `auto` / `none` / `wsl` / `sandbox` |
-| `MICRODOT_SANDBOX_DIR` | — | explicit sandbox root override |
+| `MICRODOT_SANDBOX_DIR` | - | explicit sandbox root override |
 | `MICRODOT_SPACE` | worker name | space to use |
 | `MICRODOT_MISSION` | — | initial `mission.md` text |
 | `MICRODOT_SANDBOX_BWRAP` | `false` | wrap worker in bubblewrap (read-only root) |

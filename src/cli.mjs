@@ -233,7 +233,6 @@ async function main() {
     maxAgents,
     maxConcurrent,
     allowSpawn,
-    sandbox: (process.env.MICRODOT_TOOL_SANDBOX ?? 'auto').toLowerCase(),
     headless,
     isolate,
     debug,

@@ -24,7 +24,8 @@ MICRODOT_HEADLESS=true
 MICRODOT_OPEN_SHOTS=false
 MICRODOT_KEEP_SHOTS=false
 MICRODOT_VERBOSE=false
-MICRODOT_TOOL_SANDBOX=sandbox        # native Linux worker (add MICRODOT_SANDBOX_BWRAP=true + bubblewrap for a jail)
+# Custom tools always run in the native Linux worker (no fallback).
+# Add MICRODOT_SANDBOX_BWRAP=true + install bubblewrap for a jail.
 MICRODOT_COMPACT=true                # keep context/token cost low
 MICRODOT_KEEP_RECENT=6
 MICRODOT_OFFLOAD_TOKENS=4000
