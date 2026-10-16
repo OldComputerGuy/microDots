@@ -34,6 +34,38 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
   const stripAnsi = (s) => s.replace(/\u001b\[[0-9;]*m/g, '');
   const promptTail = () => lastPrompt.split('\n').pop();
   const cols = () => Math.max(20, (stdout.columns || 80) | 0);
+
+  // Parse one key escape sequence at the START of `str`. Returns
+  // { consumed, key } where key is a logical name ('up','down','left','right',
+  // 'home','end','delete','ignore'), or null if `str` isn't a complete sequence
+  // (e.g. a lone ESC). Handles CSI (`\u001b[A`, `\u001b[1;2A`), SS3 (`\u001bOA`)
+  // and tilde forms (`\u001b[3~`), so arrow keys work across terminals.
+  function parseKey(str) {
+    const csi = /^\u001b\[([0-9;]*)([A-Za-z~])/.exec(str);
+    if (csi) {
+      const p = csi[1];
+      const f = csi[2];
+      const consumed = csi[0].length;
+      if (f === 'A') return { consumed, key: 'up' };
+      if (f === 'B') return { consumed, key: 'down' };
+      if (f === 'C') return { consumed, key: 'right' };
+      if (f === 'D') return { consumed, key: 'left' };
+      if (f === 'H') return { consumed, key: 'home' };
+      if (f === 'F') return { consumed, key: 'end' };
+      if (f === '~') {
+        if (p === '1' || p === '7') return { consumed, key: 'home' };
+        if (p === '4' || p === '8') return { consumed, key: 'end' };
+        if (p === '3') return { consumed, key: 'delete' };
+      }
+      return { consumed, key: 'ignore' }; // unknown CSI (e.g. focus, paste) — don't act
+    }
+    const ss3 = /^\u001bO([A-Za-z])/.exec(str);
+    if (ss3) {
+      const map = { A: 'up', B: 'down', C: 'right', D: 'left', H: 'home', F: 'end' };
+      return { consumed: ss3[0].length, key: map[ss3[1]] || 'ignore' };
+    }
+    return null;
+  }
   // Rows a set of display lines occupies, accounting for terminal wrapping.
   function rowsOf(lines, w) {
     let r = 0;
@@ -165,30 +197,31 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
       const n = chooser.options.length;
       let k = 0;
       while (k < s.length) {
-        if (s.startsWith('\u001b[A', k)) {
-          chooser.index = (chooser.index - 1 + n) % n;
-          k += 3;
-          renderChooser();
-          continue;
-        }
-        if (s.startsWith('\u001b[B', k)) {
-          chooser.index = (chooser.index + 1) % n;
-          k += 3;
-          renderChooser();
-          continue;
-        }
         const c = s[k];
+        if (c === '\u001b') {
+          const seq = parseKey(s.slice(k));
+          if (seq) {
+            if (seq.key === 'up') {
+              chooser.index = (chooser.index - 1 + n) % n;
+              renderChooser();
+            } else if (seq.key === 'down') {
+              chooser.index = (chooser.index + 1) % n;
+              renderChooser();
+            }
+            k += seq.consumed;
+            continue;
+          }
+          // A lone ESC (not part of a sequence) cancels the picker.
+          const resolve = chooser.resolve;
+          finishChooser();
+          resolve(null);
+          return;
+        }
         if (c === '\r' || c === '\n') {
           const pick = chooser.options[chooser.index];
           const resolve = chooser.resolve;
           finishChooser();
           resolve(pick.value ?? pick);
-          return;
-        }
-        if (c === '\u001b') {
-          const resolve = chooser.resolve;
-          finishChooser();
-          resolve(null);
           return;
         }
         if (c === '\u0003') {
@@ -271,46 +304,45 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         continue;
       }
       if (ch === '\u001b') {
-        const m = s.slice(i).match(/^\u001b\[[0-9;?]*[A-Za-z~]|^\u001bO[A-Za-z]/);
-        if (m) {
-          const seq = m[0];
+        const seq = parseKey(s.slice(i));
+        if (seq) {
           const items = suggestions();
-          if (seq === '\u001b[A' || seq === '\u001b[B') {
+          if (seq.key === 'up' || seq.key === 'down') {
             if (items.length) {
-              sel = (sel + (seq === '\u001b[A' ? -1 : 1) + items.length) % items.length;
+              sel = (sel + (seq.key === 'up' ? -1 : 1) + items.length) % items.length;
               edit(items[sel].complete); // preview the highlighted command
               cur = input.length;
               render();
             } else {
-              historyNav(seq === '\u001b[A' ? -1 : 1); // shell-style history
+              historyNav(seq.key === 'up' ? -1 : 1); // shell-style history
             }
-          } else if (seq === '\u001b[C') {
+          } else if (seq.key === 'right') {
             if (cur < input.length) {
               cur++;
               render();
             }
-          } else if (seq === '\u001b[D') {
+          } else if (seq.key === 'left') {
             if (cur > 0) {
               cur--;
               render();
             }
-          } else if (seq === '\u001b[H' || seq === '\u001b[1~' || seq === '\u001b[7~') {
+          } else if (seq.key === 'home') {
             if (cur !== 0) {
               cur = 0;
               render();
             }
-          } else if (seq === '\u001b[F' || seq === '\u001b[4~' || seq === '\u001b[8~') {
+          } else if (seq.key === 'end') {
             if (cur !== input.length) {
               cur = input.length;
               render();
             }
-          } else if (seq === '\u001b[3~') {
+          } else if (seq.key === 'delete') {
             if (cur < input.length) {
               edit(input.slice(0, cur) + input.slice(cur + 1));
               render();
             }
           }
-          i += seq.length;
+          i += seq.consumed;
         } else {
           onEscape?.();
           i += 1;
