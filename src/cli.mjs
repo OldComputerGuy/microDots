@@ -51,6 +51,10 @@ if (!apiKey) {
 const dim = (s) => `\x1b[2m${s}\x1b[0m`;
 const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
 const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
+const bold = (s) => `\x1b[1m${s}\x1b[0m`;
+const green = (s) => `\x1b[32m${s}\x1b[0m`;
+const magenta = (s) => `\x1b[35m${s}\x1b[0m`;
+const blue = (s) => `\x1b[34m${s}\x1b[0m`;
 
 // Quiet by default: a KITT-style scanner instead of a wall of tool lines.
 // MICRODOT_VERBOSE=true restores the per-tool logging.
@@ -490,18 +494,23 @@ async function main() {
     }
     if (line === '/tools') {
       const { builtin, custom, byProject } = await tools.execute('list_tools', {});
-      console.log(dim('built-in:'));
-      for (const t of builtin) console.log(`  ${t.name}${dim(` — ${(t.description || '').slice(0, 96)}`)}`);
+      console.log(cyan('built-in:'));
+      for (const t of builtin) console.log(`  ${bold(t.name)}${dim(` — ${(t.description || '').slice(0, 96)}`)}`);
       if (byProject) {
         // Root (no project): cross-project view — project name, then its tools.
-        console.log(dim('custom — by project:'));
+        console.log(cyan('custom — by project:'));
         for (const g of byProject) {
-          console.log(`  ${g.name} (${g.tools.length}):`);
+          const label = g.name.startsWith('engine')
+            ? magenta(g.name)
+            : g.name.startsWith('root')
+              ? blue(g.name)
+              : green(g.name);
+          console.log(`  ${label} ${dim(`(${g.tools.length})`)}`);
           for (const n of g.tools) console.log(`    ${n}`);
         }
       } else {
-        console.log(dim(`custom (${custom.length}):`));
-        for (const t of custom) console.log(`  ${t.name} ${dim(`[${t.backend}] — ${(t.description || '').slice(0, 88)}`)}`);
+        console.log(cyan(`custom (${custom.length}):`));
+        for (const t of custom) console.log(`  ${bold(t.name)} ${dim(`[${t.backend}] — ${(t.description || '').slice(0, 88)}`)}`);
       }
       continue;
     }
