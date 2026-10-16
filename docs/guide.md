@@ -34,7 +34,7 @@ experiment) without shuffling directories.
 - `/project <name>` **loads and resumes** it (its latest chat + its space).
 - `/project new <name>` creates a **clean** project and switches to it.
 - `/project delete <name>` removes one (not the current).
-- `/project /` (or `off`, or picking *root* in the picker) returns to the root
+- `/project /` (or picking *root* in the picker) returns to the root
   (no-project) layer — the generic space.
 - MicroDot starts with **no project**. Select one with `/project` (picker) — it
   **resumes that project's latest chat**. (Set `MICRODOT_PROJECT` to force a

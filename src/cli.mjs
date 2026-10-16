@@ -189,7 +189,7 @@ function spawnAgentTerminal(name, type) {
 function help() {
   console.log(dim('commands:'));
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
-  console.log(dim('  /project [<name>]    show/load a project — no name: pick from a list (resumes its last chat); new/delete; "/" or "off" = root'));
+  console.log(dim('  /project [<name>]    show/load a project — no name: pick from a list (resumes its last chat); new/delete; "/" = root'));
   console.log(dim('  (paste multi-line text directly, then press Enter to run it)'));
   console.log(dim('  (type / for a command menu — Up/Down or Tab fill the line, Enter runs it)'));
   console.log(dim('  (Up/Down (no menu) recall previous inputs — commands included)'));
@@ -664,7 +664,7 @@ async function main() {
         }
         console.log(dim(`current project: ${cur || '(none — using the launch folder)'}`));
         for (const p of list) console.log(`  ${p.name === cur ? '*' : ' '} ${p.name}  ${dim(`${p.chats} chat(s) · ${new Date(p.updatedAt).toLocaleString()}`)}`);
-        console.log(dim('load: /project <name>   new: /project new <name>   delete: /project delete <name>   root: /project / (or off)'));
+        console.log(dim('load: /project <name>   new: /project new <name>   delete: /project delete <name>   root: /project /'));
         continue;
       }
       if (sub === 'new') {
@@ -691,7 +691,7 @@ async function main() {
         }
         continue;
       }
-      if (sub === 'off' || sub === 'root' || sub === '/') {
+      if (sub === '/' || sub === 'root') {
         try {
           await loadProject(null, { fresh: false }); // back to the root (no project)
         } catch (e) {
