@@ -284,7 +284,7 @@ async function main() {
   // last agent, and clean scratch (sub-agents, screenshots) unless kept.
   async function cleanup() {
     busy.stop();
-    autosave();
+    autosave({ onlyIfUsed: true });
     cleanupSubagents();
     if ((process.env.MICRODOT_PRUNE_NOTES ?? 'true') !== 'false') {
       pruneNotes(agentName, {
@@ -325,8 +325,11 @@ async function main() {
   process.on('SIGINT', handleInterrupt);
   // Conversation state (persisted so it can be resumed later).
   const chat = { id: newChatId(), title: '', agent: agentName, type: workerType, space: `spaces/${agentName}`, cwd: process.env.MICRODOT_LAUNCH_DIR || process.cwd(), model, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
-  function autosave() {
+  function autosave({ onlyIfUsed = false } = {}) {
     chat.messages = messages;
+    // Don't persist a chat that was never actually used (no user turn) — that
+    // would create spurious blank "contexts" that then look like the newest.
+    if (onlyIfUsed && !messages.some((m) => m.role === 'user')) return;
     if (!chat.title) {
       const firstUser = messages.find((m) => m.role === 'user' && typeof m.content === 'string');
       if (firstUser) chat.title = firstUser.content.replace(/\s+/g, ' ').trim().slice(0, 60);
@@ -356,7 +359,7 @@ async function main() {
   // Switch the active project and re-init the session for it. `fresh` starts a
   // clean chat; otherwise the project's most recent chat is resumed.
   async function loadProject(name, { fresh = false } = {}) {
-    autosave();
+    autosave({ onlyIfUsed: true });
     setCurrentProject(name);
     ensureProject();
     spacePath = ensureSpace(agentName);
@@ -386,7 +389,7 @@ async function main() {
         renderHistory(messages);
       }
     }
-    autosave();
+    autosave({ onlyIfUsed: true });
     console.log(dim(`project "${name}" · space spaces/${agentName} · type ${workerType} · ${listChats().length} chat(s)`));
   }
 
@@ -635,9 +638,8 @@ async function main() {
             console.log(dim('(unchanged)'));
             continue;
           }
-          if (pick === cur) {
-            console.log(dim(`already on "${pick}"`));
-            continue;
+          if (pick !== cur) {
+            console.log(dim(`loading "${pick}"…`));
           }
           try {
             await loadProject(pick, { fresh: false });
