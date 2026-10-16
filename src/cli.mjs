@@ -390,7 +390,7 @@ async function main() {
     activeAbort = ac;
     busy.start('thinking');
     try {
-      await runAgent({
+      const result = await runAgent({
         messages,
         tools,
         model,
@@ -407,6 +407,9 @@ async function main() {
         confirm: confirmCreate,
         compact: compactFor(spacePath, 0),
       });
+      if (typeof result === 'string' && result.startsWith('(stopped') && !ac.signal.aborted) {
+        console.log(dim(`\n${result}`));
+      }
     } catch (e) {
       busy.stop();
       md.flush();
@@ -439,7 +442,7 @@ async function main() {
   while (true) {
     const line = (await ask(cyan(`\n${agentName}@you> `))).trim();
     if (!line) continue;
-    if (line === '/exit' || line === '/quit') break;
+    if (line === '/exit' || line === '/quit' || line === 'exit' || line === 'quit') break;
     if (line === '/help') {
       help();
       continue;

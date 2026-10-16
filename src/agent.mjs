@@ -282,5 +282,27 @@ export async function runAgent({
       }
     }
   }
+
+  // Step limit reached without a final answer. Don't stop silently — ask the
+  // model for a definitive status (no tools allowed), so the turn always ends
+  // with a clear conclusion instead of leaving the user to ask "how did it go?".
+  if (signal?.aborted) return '(stopped: interrupted)';
+  try {
+    const wrapup = [
+      ...messages,
+      {
+        role: 'system',
+        content:
+          'You have reached the step limit. Do NOT call any tools. Reply with a short, definitive status: what you completed, what is verified working, what is incomplete or broken, and the concrete next steps.',
+      },
+    ];
+    const { content } = await chatStep({ messages: wrapup, tools: [], model, apiKey, baseUrl, onToken, signal });
+    if (content && content.trim()) {
+      messages.push({ role: 'assistant', content });
+      return content;
+    }
+  } catch (e) {
+    if (signal?.aborted || e?.name === 'AbortError') return '(stopped: interrupted)';
+  }
   return '(stopped: reached the step limit)';
 }
