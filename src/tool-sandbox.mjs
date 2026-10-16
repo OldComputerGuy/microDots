@@ -66,6 +66,12 @@ function bwrapArgs(workspace, cwd) {
   ];
 }
 
+// The workspace (space dir) currently bind-mounted read-write by bwrap, in
+// SANDBOX path form; null when the worker runs unconfined (no bind — the whole
+// filesystem is writable). Used to detect a stale bind after the active project
+// or space changes.
+let boundWorkspace = null;
+
 function workerCommand() {
   const worker = workerPath();
   const node = process.env.MICRODOT_NODE || 'node';
@@ -75,17 +81,28 @@ function workerCommand() {
       const space = spaceDir(process.env.MICRODOT_AGENT || 'main');
       mkdirSync(space, { recursive: true });
       const workspace = hostToSandboxPath(space);
+      boundWorkspace = workspace;
       const cwd = hostToSandboxPath(process.cwd());
       return { cmd: 'wsl.exe', bwrap: true, args: ['-d', distro(), '--exec', 'bwrap', ...bwrapArgs(workspace, cwd), '/usr/bin/node', workerWsl] };
     }
+    boundWorkspace = null;
     return { cmd: 'wsl.exe', bwrap: false, args: ['-d', distro(), '--exec', '/usr/bin/node', workerWsl] };
   }
   if (IS_LINUX && useBwrap() && commandExists('bwrap')) {
     const workspace = spaceDir(process.env.MICRODOT_AGENT || 'main');
     mkdirSync(workspace, { recursive: true });
+    boundWorkspace = workspace;
     return { cmd: 'bwrap', bwrap: true, args: [...bwrapArgs(workspace, process.cwd()), node, worker] };
   }
+  boundWorkspace = null;
   return { cmd: node, bwrap: false, args: [worker] };
+}
+
+// Normalise a sandbox path for comparison (separators + trailing slash; case
+// only matters on Windows).
+function normSandboxPath(p) {
+  const s = String(p).replace(/\\/g, '/').replace(/\/+$/, '');
+  return IS_WIN ? s.toLowerCase() : s;
 }
 
 let worker = null;
@@ -218,8 +235,8 @@ function handleLine(line, onReady) {
       // A tool whose code computed but never `return`ed would otherwise surface
       // as a silent `null` (which reads like "the sandbox is broken").
       if (msg.noReturn) {
-        r.log?.('tool returned no value — did you forget a return statement?');
-        r.resolve({ warning: 'tool returned no value — check for a missing `return` statement.' });
+        r.log?.('tool ran, but returned no value — add a `return` statement (this is not a sandbox error).');
+        r.resolve({ warning: 'tool ran but returned no value — add a `return` statement. The sandbox is fine; the tool code simply did not return anything.' });
       } else {
         r.resolve(msg.value);
       }
@@ -238,6 +255,14 @@ function sendHost(obj) {
 }
 
 export async function runSandboxedTool({ code, args, root, agentId, bridge, log, textLimit, timeoutMs } = {}) {
+  // bwrap binds exactly one workspace at worker start. If the active top-level
+  // space has changed (e.g. a /project switch), the running worker's bind is
+  // stale and the new space would be read-only (EROFS) — restart it so it
+  // rebinds to the current space.
+  const topSpace = hostToSandboxPath(spaceDir(process.env.MICRODOT_AGENT || 'main'));
+  if (boundWorkspace && normSandboxPath(boundWorkspace) !== normSandboxPath(topSpace)) {
+    stopSandboxWorker();
+  }
   await ensureWorker();
   const id = `r${++seq}`;
   const rootSandbox = hostToSandboxPath(root ?? spaceDir(process.env.MICRODOT_AGENT || 'main'));
@@ -267,6 +292,7 @@ export function stopSandboxWorker() {
   worker = null;
   ready = null;
   readyResolve = null;
+  boundWorkspace = null;
 }
 
 // Back-compat aliases.
