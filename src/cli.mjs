@@ -162,7 +162,7 @@ function help() {
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
   console.log(dim('  /project [<name>]    show/load a project (resumes it); new <name> / delete <name> / off'));
   console.log(dim('  (paste multi-line text directly, then press Enter to run it)'));
-  console.log(dim('  (Esc stops a running turn · Ctrl-C: press again to stop, Enter to continue)'));
+  console.log(dim('  (Esc stops a running turn · Ctrl-C again within a second stops)'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
@@ -273,10 +273,9 @@ async function main() {
     }
   }
 
-  // Ctrl-C: first press just warns "press Ctrl-C again to exit"; a second press
-  // within EXIT_MS exits. Enter cancels the warning and continues normally.
-  // (Ctrl-C never stops a turn and never clears input — Esc does that.)
-  const EXIT_MS = Math.max(500, Number(process.env.MICRODOT_EXIT_CONFIRM_MS ?? 2000) || 2000);
+  // Ctrl-C: the first press only warns and lets the agent keep running; a second
+  // press within EXIT_MS stops everything. Otherwise nothing happens.
+  const EXIT_MS = Math.max(200, Number(process.env.MICRODOT_EXIT_CONFIRM_MS ?? 1000) || 1000);
   let lastInterrupt = 0;
   function handleInterrupt() {
     const now = Date.now();
@@ -286,7 +285,7 @@ async function main() {
       return;
     }
     lastInterrupt = now;
-    console.log(dim('\n(Ctrl-C again to stop · Enter to continue)'));
+    console.log(dim('\n(Press Ctrl-C again to stop)'));
   }
   onInterrupt = handleInterrupt;
   process.on('SIGINT', handleInterrupt);
@@ -421,7 +420,6 @@ async function main() {
   help();
   while (true) {
     const line = (await ask(cyan(`\n${agentName}@you> `))).trim();
-    lastInterrupt = 0; // Enter cancels the Ctrl-C exit warning
     if (!line) continue;
     if (line === '/exit' || line === '/quit') break;
     if (line === '/help') {
