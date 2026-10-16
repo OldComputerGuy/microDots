@@ -130,6 +130,7 @@ export function createMarkdownStream({ write }) {
   }
 
   function handleLine(line) {
+    line = String(line).replace(/\r$/, ''); // tolerate CRLF content (a stray \r would overwrite the line)
     if (inCode) {
       renderLine(line);
       return;

@@ -215,8 +215,13 @@ function help() {
 function renderHistory(msgs) {
   for (const m of msgs) {
     if (m.role === 'system') continue;
-    if (m.role === 'user' && typeof m.content === 'string') console.log(`${cyan('you>')} ${m.content}`);
-    else if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) console.log(`\n${m.content}`);
+    if (m.role === 'user' && typeof m.content === 'string') {
+      console.log(`${cyan('you>')} ${m.content}`);
+    } else if (m.role === 'assistant' && typeof m.content === 'string' && m.content.trim()) {
+      const md = createMarkdownStream({ write: (s) => process.stdout.write(s) });
+      md.push(m.content.endsWith('\n') ? m.content : `${m.content}\n`);
+      md.flush();
+    }
   }
 }
 
