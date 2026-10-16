@@ -1,6 +1,6 @@
 // MicroDot CLI: one agent per process, all attached to one shared Chromium.
 // `/new` opens a new terminal (a new agent).
-import { createPrompt } from './prompt.mjs';
+import { createPrompt } from './input.mjs';
 import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { execFile } from 'node:child_process';
