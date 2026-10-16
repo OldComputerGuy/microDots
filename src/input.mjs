@@ -37,12 +37,13 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout } 
     }
     stdout.write('\x1b[?2004h'); // ask the terminal to bracket pastes
   }
+  if (DEBUG) process.stderr.write(`\x1b[2m[input] isTTY=${isTTY} raw=${(() => { try { return process.stdin.isRaw; } catch { return '?'; } })()}\x1b[0m\n`);
   stdin.setEncoding?.('utf8');
   stdin.resume?.();
 
   stdin.on('data', (chunk) => {
     const s = String(chunk);
-    if (DEBUG) process.stderr.write(`\x1b[2m[input] ${JSON.stringify(s)}\x1b[0m\n`);
+    if (DEBUG) process.stderr.write(`\x1b[2m[input] chunk(${s.length}) ${JSON.stringify(s)}\x1b[0m\n`);
     let i = 0;
     while (i < s.length) {
       if (!inPaste && s.startsWith('\x1b[200~', i)) {
