@@ -75,11 +75,13 @@ let SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
 // Paste-aware input: a pasted block fills the prompt and does NOT submit —
 // press Enter to run it. (Bracketed paste; raw mode.)
 let activeAbort = null; // AbortController for the running turn (Esc stops it)
+let onInterrupt = null; // Ctrl-C handler, installed in main()
 const input = createPrompt({
   onEscape: () => {
     if (activeAbort) activeAbort.abort(); // stop the current turn
     else input.clear(); // idle: clear whatever is typed
   },
+  onInterrupt: () => onInterrupt?.(),
 });
 const ask = (q) => input.ask(q);
 
@@ -160,7 +162,7 @@ function help() {
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
   console.log(dim('  /project [<name>]    show/load a project (resumes it); new <name> / delete <name> / off'));
   console.log(dim('  (paste multi-line text directly, then press Enter to run it)'));
-  console.log(dim('  (Esc stops a running turn · Ctrl-C exits)'));
+  console.log(dim('  (Esc stops a running turn · Ctrl-C twice exits)'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
@@ -271,9 +273,28 @@ async function main() {
     }
   }
 
-  process.on('SIGINT', () => {
-    cleanup().finally(() => process.exit(0));
-  });
+  // Ctrl-C: first press stops the running turn (or shows a hint if idle);
+  // press again within EXIT_MS to quit — avoids accidental exits (Ctrl-C is
+  // also "copy" in most terminals).
+  const EXIT_MS = Math.max(500, Number(process.env.MICRODOT_EXIT_CONFIRM_MS ?? 2000) || 2000);
+  let lastInterrupt = 0;
+  function handleInterrupt() {
+    const now = Date.now();
+    if (now - lastInterrupt < EXIT_MS) {
+      console.log(dim('\n(exiting)'));
+      cleanup().finally(() => process.exit(0));
+      return;
+    }
+    lastInterrupt = now;
+    if (activeAbort) {
+      activeAbort.abort();
+      console.log(dim('\n(interrupted — press Ctrl-C again to exit)'));
+    } else {
+      console.log(dim('\n(press Ctrl-C again to exit)'));
+    }
+  }
+  onInterrupt = handleInterrupt;
+  process.on('SIGINT', handleInterrupt);
   // Conversation state (persisted so it can be resumed later).
   const chat = { id: newChatId(), title: '', agent: agentName, type: workerType, space: `spaces/${agentName}`, cwd: process.env.MICRODOT_LAUNCH_DIR || process.cwd(), model, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
   function autosave() {

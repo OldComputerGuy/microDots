@@ -6,7 +6,7 @@
 // run it. This is raw mode, so we echo input ourselves (basic append/backspace).
 //
 // ask(prompt) resolves with the submitted text (may contain newlines).
-export function createPrompt({ stdin = process.stdin, stdout = process.stdout, onEscape } = {}) {
+export function createPrompt({ stdin = process.stdin, stdout = process.stdout, onEscape, onInterrupt } = {}) {
   const isTTY = !!stdin.isTTY;
   const DEBUG = process.env.MICRODOT_DEBUG_INPUT === '1';
   const pending = [];
@@ -87,7 +87,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         continue;
       }
       if (ch === '\u0003') {
-        process.emit('SIGINT'); // Ctrl-C
+        onInterrupt?.(); // Ctrl-C -> handled by the CLI (stop / confirm exit)
         i++;
         continue;
       }
