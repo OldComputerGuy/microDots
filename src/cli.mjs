@@ -153,8 +153,7 @@ function help() {
   console.log(dim('commands:'));
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
   console.log(dim('  /project [<name>]    show/load a project (resumes it); new <name> / delete <name> / off'));
-  console.log(dim('  /paste        paste a multi-line prompt (end with a line containing only ".")'));
-  console.log(dim('  (or paste multi-line text directly, then press Enter to run it)'));
+  console.log(dim('  (paste multi-line text directly, then press Enter to run it)'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
@@ -398,18 +397,6 @@ async function main() {
     if (line === '/exit' || line === '/quit') break;
     if (line === '/help') {
       help();
-      continue;
-    }
-    if (line === '/paste') {
-      console.log(dim('paste your prompt; finish with a line containing only "."'));
-      const buf = [];
-      for (;;) {
-        const l = await ask(dim('… '));
-        if (l.trim() === '.' || l.trim() === 'EOF') break;
-        buf.push(l);
-      }
-      const text = buf.join('\n').trim();
-      if (text) await turn(text);
       continue;
     }
     if (line === '/new' || line.startsWith('/new ')) {
