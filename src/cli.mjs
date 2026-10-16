@@ -91,8 +91,24 @@ const COMMANDS = [
   { name: '/help', help: 'show commands' },
   { name: '/exit', help: 'quit' },
 ];
+// Suggest completions for the current input: slash commands, or project names
+// after "/project ".
+function suggest(input) {
+  if (/^\/\S*$/.test(input)) {
+    return COMMANDS.filter((c) => c.name.startsWith(input)).map((c) => ({ label: c.name, help: c.help, complete: c.name }));
+  }
+  const m = input.match(/^\/project\s+(\S*)$/);
+  if (m) {
+    const prefix = m[1];
+    return listProjects()
+      .map((p) => p.name)
+      .filter((n) => n.startsWith(prefix))
+      .map((n) => ({ label: n, help: '', complete: `/project ${n}` }));
+  }
+  return [];
+}
 const input = createPrompt({
-  commands: COMMANDS,
+  suggest,
   onEscape: () => {
     if (activeAbort) activeAbort.abort(); // stop the current turn
     else input.clear(); // idle: clear whatever is typed
@@ -176,7 +192,7 @@ function spawnAgentTerminal(name, type) {
 function help() {
   console.log(dim('commands:'));
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
-  console.log(dim('  /project [<name>]    show/load a project (resumes it); new <name> / delete <name> / off'));
+  console.log(dim('  /project [<name>]    show/load a project — no name: pick from a list (resumes its last chat); new/delete/off'));
   console.log(dim('  (paste multi-line text directly, then press Enter to run it)'));
   console.log(dim('  (type / for a command menu — Up/Down or Tab fill the line, Enter runs it)'));
   console.log(dim('  (Esc stops a running turn · while it runs, Ctrl-C again stops; idle Ctrl-C is ignored)'));
@@ -604,10 +620,34 @@ async function main() {
       const name = parts[1] || '';
       const cur = (process.env.MICRODOT_PROJECT || '').trim();
       if (!sub || sub === 'list') {
-        console.log(dim(`current project: ${cur || '(none — using the launch folder)'}`));
         const list = listProjects();
-        if (!list.length) console.log(dim('no projects yet — create one with: /project new <name>'));
-        else for (const p of list) console.log(`  ${p.name === cur ? '*' : ' '} ${p.name}  ${dim(`${p.chats} chat(s) · ${new Date(p.updatedAt).toLocaleString()}`)}`);
+        if (!list.length) {
+          console.log(dim('no projects yet — create one with: /project new <name>'));
+          continue;
+        }
+        if (input.interactive) {
+          const items = list.map((p) => ({
+            label: `${p.name}${p.name === cur ? '  (current)' : ''}  · ${p.chats} chat(s) · ${new Date(p.updatedAt).toLocaleString()}`,
+            value: p.name,
+          }));
+          const pick = await input.choose('project?  (Up/Down · Enter resumes it · Esc cancels)', items);
+          if (!pick) {
+            console.log(dim('(unchanged)'));
+            continue;
+          }
+          if (pick === cur) {
+            console.log(dim(`already on "${pick}"`));
+            continue;
+          }
+          try {
+            await loadProject(pick, { fresh: false });
+          } catch (e) {
+            console.log(yellow(`  ${e?.message ?? e}`));
+          }
+          continue;
+        }
+        console.log(dim(`current project: ${cur || '(none — using the launch folder)'}`));
+        for (const p of list) console.log(`  ${p.name === cur ? '*' : ' '} ${p.name}  ${dim(`${p.chats} chat(s) · ${new Date(p.updatedAt).toLocaleString()}`)}`);
         console.log(dim('load: /project <name>   new: /project new <name>   delete: /project delete <name>   off: /project off'));
         continue;
       }

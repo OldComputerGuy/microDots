@@ -6,7 +6,7 @@
 // with the highlighted command; Enter submits whatever is on the line.
 //
 // ask(prompt) resolves with the submitted text (may contain newlines).
-export function createPrompt({ stdin = process.stdin, stdout = process.stdout, onEscape, onInterrupt, commands = [] } = {}) {
+export function createPrompt({ stdin = process.stdin, stdout = process.stdout, onEscape, onInterrupt, suggest } = {}) {
   const isTTY = !!stdin.isTTY;
   const DEBUG = process.env.MICRODOT_DEBUG_INPUT === '1';
   const pending = [];
@@ -34,18 +34,26 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     return Math.max(1, r);
   }
 
-  // Matching slash commands for the current typed token (hidden after a space,
-  // or when the token is already an exact command).
-  function matches() {
-    if (filter.includes('\n') || !filter.startsWith('/') || /\s/.test(filter)) return [];
-    const m = commands.filter((c) => c.name.startsWith(filter));
-    return m.length === 1 && m[0].name === filter ? [] : m;
+  // Suggestions for the current typed token, from the caller's provider.
+  // Items are { label, help?, complete } where `complete` is the full input to
+  // set when chosen. Hidden when the token already equals a single completion.
+  function suggestions() {
+    if (!filter || filter.includes('\n')) return [];
+    let items = [];
+    try {
+      items = typeof suggest === 'function' ? suggest(filter) : [];
+    } catch {
+      items = [];
+    }
+    if (!items.length) return [];
+    if (items.length === 1 && items[0].complete === filter) return [];
+    return items;
   }
 
   function render() {
     if (!isTTY) return;
     const w = cols();
-    const items = matches();
+    const items = suggestions();
     if (sel >= items.length) sel = Math.max(0, items.length - 1);
 
     let out = '';
@@ -56,7 +64,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
 
     if (items.length) {
       const mlines = items.map(
-        (c, i) => `${i === sel ? '\u203a' : ' '} ${c.name}${c.help ? `  \u001b[2m${c.help}\u001b[0m` : ''}`,
+        (c, i) => `${i === sel ? '\u203a' : ' '} ${c.label}${c.help ? `  \u001b[2m${c.help}\u001b[0m` : ''}`,
       );
       const menuRows = rowsOf(mlines, w);
       out += '\n' + mlines.join('\n');
@@ -191,9 +199,9 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         continue;
       }
       if (ch === '\t') {
-        const items = matches();
+        const items = suggestions();
         if (items.length) {
-          input = items[sel].name; // fill the line (menu stays for more navigation)
+          input = items[sel].complete; // fill the line (menu stays for more navigation)
           render();
         }
         i++;
@@ -224,10 +232,10 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
         const m = s.slice(i).match(/^\u001b\[[0-9;?]*[A-Za-z~]|^\u001bO[A-Za-z]/);
         if (m) {
           const seq = m[0];
-          const items = matches();
+          const items = suggestions();
           if (items.length && (seq === '\u001b[A' || seq === '\u001b[B')) {
             sel = (sel + (seq === '\u001b[A' ? -1 : 1) + items.length) % items.length;
-            input = items[sel].name; // preview the highlighted command on the line
+            input = items[sel].complete; // preview the highlighted command on the line
             render();
           }
           i += seq.length;
