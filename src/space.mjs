@@ -56,6 +56,28 @@ export function writeMission(agentId, text) {
   return missionPath(agentId);
 }
 
+// The root agent (the top-level Dot) owns the "root mission".
+export const ROOT_AGENT = 'main';
+
+// Reset a space's mission back to the root mission:
+//  - for the root space itself, drop the override so the default
+//    (MICRODOT_MISSION, else the placeholder) is regenerated;
+//  - for a worker space, copy the root space's mission down.
+export function resetMission(agentId = 'main', rootId = ROOT_AGENT) {
+  if (spaceName(agentId) === spaceName(rootId)) {
+    try {
+      rmSync(missionPath(agentId), { force: true });
+    } catch {
+      /* ignore */
+    }
+    ensureSpace(agentId);
+  } else {
+    ensureSpace(rootId);
+    writeMission(agentId, readMission(rootId).trim());
+  }
+  return missionPath(agentId);
+}
+
 // The chosen worker type is recorded in the space so it persists across sessions.
 export function typePath(agentId = 'main') {
   return resolve(spaceDir(agentId), 'worker_type');

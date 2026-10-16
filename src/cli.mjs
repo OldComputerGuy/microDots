@@ -13,7 +13,7 @@ import { buildSystem } from './prompt.mjs';
 import { makeSpawner } from './spawner.mjs';
 import { stopSandboxWorker } from './tool-sandbox.mjs';
 import { listSkills } from './skills.mjs';
-import { ensureSpace, readMission, writeMission, shotsDir, getSpaceType, setSpaceType, pruneNotes } from './space.mjs';
+import { ensureSpace, readMission, writeMission, resetMission, shotsDir, getSpaceType, setSpaceType, pruneNotes } from './space.mjs';
 import { listProjects, existsProject, createProject, deleteProject, setCurrentProject, clearCurrentProject } from './projects.mjs';
 import { listWorkerTypes, readWorkerType } from './worker-types.mjs';
 import { newChatId, saveChat, listChats, loadChat } from './chats.mjs';
@@ -82,7 +82,7 @@ const COMMANDS = [
   { name: '/delete', help: 'delete a custom tool' },
   { name: '/skills', help: 'list saved skills' },
   { name: '/type', help: "show or set this worker's type" },
-  { name: '/mission', help: 'show or set the mission' },
+  { name: '/mission', help: 'show or set the mission (/ resets to the root mission)' },
   { name: '/reset', help: 'start a new conversation' },
   { name: '/shots', help: 'open the latest screenshot' },
   { name: '/help', help: 'show commands' },
@@ -200,7 +200,7 @@ function help() {
   console.log(dim('  /resume [id]  resume a chat — no id: pick from a list (Up/Down, Enter)'));
   console.log(dim('  /name [t]     show or set this chat\'s title'));
   console.log(dim('  /type [name]  show or set this worker\'s type'));
-  console.log(dim('  /mission [t]  show or set this space\'s mission.md'));
+  console.log(dim('  /mission [t]  show or set this space\'s mission.md (/ resets to the root mission)'));
   console.log(dim('  /reset        reset this conversation'));
   console.log(dim('  /shots        open the latest screenshot'));
   console.log(dim(`  /help /exit`));
@@ -510,8 +510,14 @@ async function main() {
       if (!text) {
         console.log(dim(`space: ${spacePath}`));
         console.log(readMission(agentName).trim() || dim('(no mission set)'));
+      } else if (text === '/') {
+        const file = resetMission(agentName);
+        mission = readMission(agentName).trim();
+        messages[0] = { role: 'system', content: buildSystem({ space: spacePath, type: workerType, mission }) };
+        console.log(dim(`mission reset to the root mission: ${file}`));
       } else {
         const file = writeMission(agentName, text);
+        mission = text;
         messages[0] = { role: 'system', content: buildSystem({ space: spacePath, type: workerType, mission: text }) };
         console.log(dim(`mission updated: ${file}`));
       }

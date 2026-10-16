@@ -52,7 +52,7 @@ microdot.bat --resume <id>              # resume a saved chat
 | `/tools`, `/delete <n>` | list / delete custom tools |
 | `/skills` | list saved skills |
 | `/type [name]` | show or set this worker's type |
-| `/mission [text]` | show or set this space's `mission.md` |
+| `/mission [text]` | show or set this space's `mission.md` (`/` resets to the root mission) |
 | `/reset`, `/shots`, `/help`, `/exit` | |
 
 Keyboard: paste multi-line text directly (Enter runs it); type **`/`** for a command menu (**↑/↓** or **Tab** fill the line, **Enter** runs it); **↑/↓** (with no menu) recall previous inputs; **Esc** stops a running turn; **Ctrl-C** is ignored when idle, and during a turn a second press within a second stops the system.

@@ -68,7 +68,7 @@ Every worker gets its **own space**, named after it, inside the project layer:
 ```
 
 - The space is also the **sandbox root**, so a tool's `ctx.fs` writes land in `<project>/.microdot/spaces/<worker>/` — enforced, not convention.
-- `mission.md` is created on first run (seed it via `MICRODOT_MISSION`) and shown to the worker each session; edit it directly or with `/mission <text>`.
+- `mission.md` is created on first run (seed it via `MICRODOT_MISSION`) and shown to the worker each session; edit it directly or with `/mission <text>`. `/mission /` resets to the **root mission** — for the root space it drops the override and regenerates the default, and for a worker space it copies the root space's mission down.
 - `/new alpha` makes a new worker with its own space. Set `MICRODOT_SPACE=research` to point a worker at a specific (possibly shared) space.
 
 ## Files & layers
