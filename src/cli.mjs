@@ -489,11 +489,20 @@ async function main() {
       continue;
     }
     if (line === '/tools') {
-      const { builtin, custom } = await tools.execute('list_tools', {});
+      const { builtin, custom, byProject } = await tools.execute('list_tools', {});
       console.log(dim('built-in:'));
       for (const t of builtin) console.log(`  ${t.name}${dim(` — ${(t.description || '').slice(0, 96)}`)}`);
-      console.log(dim(`custom (${custom.length}):`));
-      for (const t of custom) console.log(`  ${t.name} ${dim(`[${t.backend}] — ${(t.description || '').slice(0, 88)}`)}`);
+      if (byProject) {
+        // Root (no project): cross-project view — project name, then its tools.
+        console.log(dim('custom — by project:'));
+        for (const g of byProject) {
+          console.log(`  ${g.name} (${g.tools.length}):`);
+          for (const n of g.tools) console.log(`    ${n}`);
+        }
+      } else {
+        console.log(dim(`custom (${custom.length}):`));
+        for (const t of custom) console.log(`  ${t.name} ${dim(`[${t.backend}] — ${(t.description || '').slice(0, 88)}`)}`);
+      }
       continue;
     }
     if (line === '/delete' || line.startsWith('/delete ')) {

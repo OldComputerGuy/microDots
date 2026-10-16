@@ -12,6 +12,7 @@ import {
   saveTool,
   deleteTool,
   copyTool,
+  toolsByProject,
   importTool,
   loadCustomTools,
 } from './custom-tools.mjs';
@@ -597,7 +598,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
       case 'create_tool':
         return await createTool(args, confirm);
       case 'list_tools': {
-        return {
+        const out = {
           builtin: BUILTINS.map((t) => ({ name: t.function.name, description: t.function.description })),
           custom: [...custom.values()].map((c) => ({
             name: c.definition.function.name,
@@ -605,6 +606,16 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
             backend: backendName(),
           })),
         };
+        // In the root (no project active), also list every project's tools.
+        if (!(process.env.MICRODOT_PROJECT || '').trim()) {
+          const g = toolsByProject();
+          out.byProject = [
+            ...(g.engine.length ? [{ name: 'engine (shared)', tools: g.engine }] : []),
+            ...(g.root.length ? [{ name: 'root (no project)', tools: g.root }] : []),
+            ...g.projects,
+          ];
+        }
+        return out;
       }
       case 'delete_tool': {
         const name = String(args?.name ?? '').trim();

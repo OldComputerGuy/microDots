@@ -122,6 +122,7 @@ MicroDot can **write its own tools** and use them immediately.
 - The tool is registered live (callable in the **same** turn) and saved to the project layer (`<project>/.microdot/tools/<name>.mjs`).
 - Saved tools **auto-load** at startup, so they persist across sessions.
 - Manage them with **`list_tools`** (built-ins + your custom tools), **`delete_tool`** (removes the tool and its file), and **`copy_tool`** (copies a tool from one project to another — tools are per-project).
+- In the **root** (no project active), `list_tools` / `/tools` also show **tools by project** — the engine's shared set, the root layer, and each named project, grouped by project name.
 - Tools are saved **without asking** by default. Optionally set `MICRODOT_APPROVE_CREATE_TOOL=true` to be prompted (y/N) when a tool's code touches risky capabilities (`child_process`, `require`, dynamic `import`, direct `fs`/`fetch`, absolute paths, `process`, `eval`).
 In the sandbox, `ctx` gives `agentId`, `fetch(url,opts)`, `log(...)`, `fs` (jailed to the worker's space), and `browser.*` (bridged to the host browser).
 

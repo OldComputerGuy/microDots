@@ -9,7 +9,7 @@
 import { readdirSync, writeFileSync, mkdirSync, rmSync, existsSync, readFileSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { layerDirs, writeDir, projectsRoot } from './home.mjs';
+import { layerDirs, writeDir, projectsRoot, engineDir, dataDir } from './home.mjs';
 import { validProjectName } from './projects.mjs';
 
 const NAME_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -87,6 +87,40 @@ export function deleteTool(name) {
 // The tools dir for a NAMED project (regardless of which project is active now).
 export function projectToolDir(project) {
   return resolve(projectsRoot(), validProjectName(project), 'tools');
+}
+
+// Names of the .mjs tool files in a dir (sorted), or [] if it doesn't exist.
+function listToolFiles(dir) {
+  try {
+    return readdirSync(dir)
+      .filter((f) => f.toLowerCase().endsWith('.mjs'))
+      .map((f) => f.replace(/\.mjs$/i, ''))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+// Every custom tool on disk, grouped — engine (shared), the root layer, and each
+// named project — for a cross-project listing when no single project is active.
+export function toolsByProject() {
+  const override = (process.env.MICRODOT_TOOLS_DIR || '').trim();
+  const engine = listToolFiles(override ? resolve(process.cwd(), override) : resolve(engineDir(), 'tools-custom'));
+  const root = listToolFiles(resolve(dataDir(), 'tools'));
+  const projects = [];
+  let entries = [];
+  try {
+    entries = readdirSync(projectsRoot(), { withFileTypes: true });
+  } catch {
+    /* no projects root yet */
+  }
+  for (const e of entries) {
+    if (!e.isDirectory() || e.name.startsWith('.')) continue;
+    const tools = listToolFiles(resolve(projectsRoot(), e.name, 'tools'));
+    if (tools.length) projects.push({ name: e.name, tools });
+  }
+  projects.sort((a, b) => a.name.localeCompare(b.name));
+  return { engine, root, projects };
 }
 
 // Copy a custom tool file from one project to another. Tools are host-managed
