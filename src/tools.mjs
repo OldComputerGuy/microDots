@@ -473,6 +473,22 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
     }
   }
 
+  // (Re)load a custom tool into THIS session's live tool list. Used by
+  // create_tool, and by copy_tool when it targets the active project.
+  async function registerTool(name) {
+    const { definition, code } = await importTool(name);
+    const existing = custom.get(name);
+    if (existing) {
+      const i = definitions.indexOf(existing.definition);
+      if (i >= 0) definitions[i] = definition;
+      else definitions.push(definition);
+    } else {
+      definitions.push(definition);
+    }
+    custom.set(name, { definition, code });
+    return definition;
+  }
+
   async function createTool(args, confirm) {
     const name = String(args?.name ?? '').trim();
     validateName(name, BUILTIN_NAMES);
@@ -500,17 +516,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
       parameters,
       code: args.code,
     });
-    const { definition, code } = await importTool(name);
-
-    const existing = custom.get(name);
-    if (existing) {
-      const i = definitions.indexOf(existing.definition);
-      if (i >= 0) definitions[i] = definition;
-      else definitions.push(definition);
-    } else {
-      definitions.push(definition);
-    }
-    custom.set(name, { definition, code });
+    const definition = await registerTool(name);
 
     return {
       created: name,
@@ -623,7 +629,27 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
         if (!name) throw new Error('"name" is required');
         if (!from) throw new Error('a source project is required ("from") — no current project is active');
         if (!to) throw new Error('a target project is required ("to")');
-        return copyTool({ name, from, to, overwrite: args?.overwrite === true });
+        const res = copyTool({ name, from, to, overwrite: args?.overwrite === true });
+
+        // If we just copied into the ACTIVE project, load it into this session
+        // now so it is immediately callable (parked "_name" tools stay parked).
+        const cur = (process.env.MICRODOT_PROJECT || '').trim();
+        let registered = false;
+        if (cur && to === cur && !name.startsWith('_') && !BUILTIN_NAMES.has(name)) {
+          try {
+            await registerTool(name);
+            registered = true;
+          } catch {
+            /* leave it for the next session */
+          }
+        }
+        return {
+          ...res,
+          registered,
+          note: registered
+            ? 'Copied and loaded — callable now in this session.'
+            : `Copied. It will be available when project "${to}" is active (select it with /project).`,
+        };
       }
       case 'http_get': {
         const res = await fetch(args.url, {
