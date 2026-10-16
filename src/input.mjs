@@ -18,6 +18,8 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
   let lastPrompt = '';
   let sel = 0;
   let inputRows = 1; // rows occupied by (prompt tail + input) at the last render
+  let chooser = null; // active list picker: { prompt, options, index, resolve }
+  let chooserRows = 0;
 
   const write = (s) => {
     if (isTTY) stdout.write(s);
@@ -68,6 +70,32 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     inputRows = rowsOf(body.split('\n'), w);
   }
 
+  // A simple list picker (used by /resume). Draws a prompt + options below the
+  // current line; Up/Down move, Enter picks, Esc cancels.
+  function renderChooser() {
+    if (!isTTY || !chooser) return;
+    const w = cols();
+    let out = '';
+    if (chooserRows > 1) out += `\u001b[${chooserRows - 1}A`;
+    out += '\r\u001b[0J';
+    const lines = [
+      chooser.prompt,
+      ...chooser.options.map((o, i) => `${i === chooser.index ? '\u203a' : ' '} ${o.label}`),
+    ];
+    out += lines.join('\n');
+    stdout.write(out);
+    chooserRows = rowsOf(lines, w);
+  }
+  function finishChooser() {
+    if (isTTY && chooserRows > 0) {
+      if (chooserRows > 1) stdout.write(`\u001b[${chooserRows - 1}A`);
+      stdout.write('\r\u001b[0J');
+    }
+    chooser = null;
+    chooserRows = 0;
+    inputRows = 1;
+  }
+
   if (isTTY) {
     try {
       stdin.setRawMode(true);
@@ -83,6 +111,48 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
   stdin.on('data', (chunk) => {
     const s = String(chunk);
     if (DEBUG) process.stderr.write(`\u001b[2m[input] chunk(${s.length}) ${JSON.stringify(s)}\u001b[0m\n`);
+
+    // While a picker is open, only navigate/select/cancel.
+    if (chooser) {
+      const n = chooser.options.length;
+      let k = 0;
+      while (k < s.length) {
+        if (s.startsWith('\u001b[A', k)) {
+          chooser.index = (chooser.index - 1 + n) % n;
+          k += 3;
+          renderChooser();
+          continue;
+        }
+        if (s.startsWith('\u001b[B', k)) {
+          chooser.index = (chooser.index + 1) % n;
+          k += 3;
+          renderChooser();
+          continue;
+        }
+        const c = s[k];
+        if (c === '\r' || c === '\n') {
+          const pick = chooser.options[chooser.index];
+          const resolve = chooser.resolve;
+          finishChooser();
+          resolve(pick.value ?? pick);
+          return;
+        }
+        if (c === '\u001b') {
+          const resolve = chooser.resolve;
+          finishChooser();
+          resolve(null);
+          return;
+        }
+        if (c === '\u0003') {
+          onInterrupt?.();
+          k++;
+          continue;
+        }
+        k++;
+      }
+      return;
+    }
+
     let i = 0;
     while (i < s.length) {
       if (!inPaste && s.startsWith('\u001b[200~', i)) {
@@ -196,6 +266,19 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
       return new Promise((res) => {
         waiter = res;
       });
+    },
+    // Interactive list picker: resolves with the chosen option's value, or null
+    // if cancelled (or if not a TTY).
+    choose(prompt, options = []) {
+      if (!isTTY || !options.length) return Promise.resolve(null);
+      return new Promise((resolve) => {
+        chooser = { prompt, options, index: 0, resolve };
+        chooserRows = 0;
+        renderChooser();
+      });
+    },
+    get interactive() {
+      return isTTY;
     },
     clear() {
       input = '';

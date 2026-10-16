@@ -183,7 +183,7 @@ function help() {
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
-  console.log(dim('  /resume [id]  list saved chats, or resume one'));
+  console.log(dim('  /resume [id]  resume a chat — no id: pick from a list (Up/Down, Enter)'));
   console.log(dim('  /name [t]     show or set this chat\'s title'));
   console.log(dim('  /type [name]  show or set this worker\'s type'));
   console.log(dim('  /mission [t]  show or set this space\'s mission.md'));
@@ -539,13 +539,38 @@ async function main() {
       const arg = line.slice(7).trim();
       if (!arg) {
         const list = listChats();
-        if (!list.length) console.log(dim('no saved chats yet'));
-        else {
+        if (!list.length) {
+          console.log(dim('no saved chats yet'));
+          continue;
+        }
+        let pick = null;
+        if (input.interactive) {
+          const items = list.slice(0, 40).map((c) => ({
+            label: `${(c.title || c.id).slice(0, 60)}  · ${new Date(c.updatedAt).toLocaleString()} · ${c.count} msgs`,
+            value: c.id,
+          }));
+          pick = await input.choose('resume which chat?  (Up/Down · Enter · Esc cancels)', items);
+          if (!pick) {
+            console.log(dim('resume cancelled'));
+            continue;
+          }
+        } else {
           console.log(dim('saved chats (newest first):'));
           for (const c of list.slice(0, 20)) {
             console.log(`  ${c.id}  ${dim(`${new Date(c.updatedAt).toLocaleString()} · ${c.count} msgs · ${c.agent} · ${c.title || ''}`)}`);
           }
           console.log(dim('resume with: /resume <id>'));
+          continue;
+        }
+        try {
+          const c = loadChat(pick);
+          chat.id = c.id;
+          chat.title = c.title || '';
+          messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
+          console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
+          renderHistory(messages);
+        } catch (e) {
+          console.log(yellow(`  ${e?.message ?? e}`));
         }
       } else {
         try {

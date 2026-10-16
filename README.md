@@ -47,7 +47,7 @@ microdot.bat --resume <id>              # resume a saved chat
 |---|---|
 | `/new [name] [type]` | open a new worker (own CLI + space + type) |
 | `/project [name]` | show/load a project (resumes it); `new <name>`, `delete <name>`, `off` |
-| `/resume [id]` | list saved chats, or resume one |
+| `/resume [id]` | resume a saved chat — no id: pick from a list (Up/Down, Enter) |
 | `/name [title]` | show or set this chat's title |
 | `/tools`, `/delete <n>` | list / delete custom tools |
 | `/skills` | list saved skills |
