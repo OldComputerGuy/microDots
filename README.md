@@ -19,6 +19,7 @@
 - **Builds its own tools** - `create_tool` (sandboxed) + `list_tools` / `delete_tool` / `copy_tool`.
 - **Delegates to itself** — `spawn_subagent` / `spawn_subagents`: recursive, parallel, nested spaces, roll-up, hard caps.
 - **One process, one Chromium** — a tab per agent; started on demand and stopped when idle.
+- **Drives a real browser tab** — open, read, click, type, **scroll**, screenshot.
 - **Plain-file state** — chats, spaces, worker types, skills, tools. No services to run.
 - **Library-ready** — `createRuntime()` + `dot.run()` for your own Node projects; the CLI is just a test harness.
 

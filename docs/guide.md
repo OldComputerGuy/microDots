@@ -99,6 +99,16 @@ MicroDot has a **`web_search`** tool backed by **Parallel** — the same provide
 - `web_fetch(urls, objective?)` → the extracted content of specific pages — when you need exact wording, quotes, or full-page analysis.
 - Both are **builtins**, so they run on the host even in sandbox mode. Prefer them over opening a search engine in the browser (which gets blocked).
 
+## Browser tools
+The agent drives **its own tab** in the shared Chromium (started on demand). These builtins run on the host; sandboxed tools reach the same via `ctx.browser.*` (bridged back).
+
+- `browser_open(url)` → `status`, `title`, `url`, visible `text`.
+- `browser_text()` — the current tab's title + text.
+- `browser_screenshot()` → JPEG saved to `spaces/<worker>/shots/` (kept newest `MICRODOT_SHOT_KEEP`) and attached to the conversation so the model can see it.
+- `browser_click(selector)` / `browser_type(selector, text)` — interact with the page.
+- `browser_scroll({ direction?, amount?, selector? })` — scroll `up`/`down`/`top`/`bottom` by `amount` px (default `600`), or scroll a `selector` into view; returns `{ scrollY, innerHeight, scrollHeight, atBottom, url }`.
+- `browser_close()` — close your tab (the shared browser stays up for other agents).
+
 ## Skills (recipes)
 MicroDot can save reusable **skills** — named markdown recipes/procedures (not code; that's `create_tool`). Engine skills live in `<install>/skills/`, project ones in `<project>/.microdot/skills/`.
 
@@ -138,7 +148,7 @@ There is **no sandbox mode switch and no fallback**: custom tools are sandboxed 
 
 In the sandbox:
 - `ctx.fs` is jailed to the worker's space (`<project>/.microdot/spaces/<worker>/`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (shared Chromium / OS viewer).
-- Tools get `ctx.browser.{open,text,url,screenshot,click,type,close}` + `ctx.fs` instead of `page()`/`host`/`import()`.
+- Tools get `ctx.browser.{open,text,url,screenshot,click,type,scroll,close}` + `ctx.fs` instead of `page()`/`host`/`import()`.
 
 > With `bwrap` on, the system is read-only and only the space is writable; without it, WSL mode is functional-but-loose. Fully closing interop/reads needs a dedicated distro.
 
@@ -209,7 +219,8 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_MAX_AGENTS` | `16` | max agents per run (whole tree) |
 | `MICRODOT_MAX_CONCURRENT` | `8` | max sub-agents running at once |
 | `MICRODOT_DEBUG` | `false` | keep sub-agent spaces + verbose logs |
-| `PARALLEL_API_KEY` | - | optional Parallel search key |
+| `MICRODOT_DEBUG_INPUT` | `false` | log each raw input chunk (terminal / key debugging) |
+| `PARALLEL_API_KEY` | — | optional Parallel search key (alias: `PARALLEL_KEY`) |
 | `MICRODOT_SEARCH_MAX` | `0` | cap `web_search` calls per session (0 = unlimited); guards Parallel cost |
 | `MICRODOT_SANDBOX_DIR` | - | explicit sandbox root override |
 | `MICRODOT_SPACE` | worker name | space to use |
@@ -222,7 +233,8 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_CHROMIUM_ARGS` | — | extra Chromium flags |
 | `MICRODOT_TERMINAL` | `x-terminal-emulator` | terminal for `/new` on Linux |
 | `MICRODOT_AGENT` | `main` | agent name for this window |
-| `MICRODOT_PROJECT` | — | current project name (else the launch folder) |
+| `MICRODOT_PROJECT` | — | current project name (else the launch folder / root layer) |
+| `MICRODOT_PROJECT_DIR` | — | explicit project-layer dir override (advanced) |
 | `MICRODOT_DATA_DIR` | `<install>/.microdot` | data dir (gitignored) |
 | `MICRODOT_PROJECTS_DIR` | `<install>/.microdot/projects` | where named projects live |
 | `MICRODOT_PRUNE_NOTES` | `true` | prune a space's `notes/` on exit |
