@@ -162,7 +162,7 @@ function help() {
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
   console.log(dim('  /project [<name>]    show/load a project (resumes it); new <name> / delete <name> / off'));
   console.log(dim('  (paste multi-line text directly, then press Enter to run it)'));
-  console.log(dim('  (Esc stops a running turn · Ctrl-C twice exits)'));
+  console.log(dim('  (Esc stops a running turn · Ctrl-C: press again to stop, Enter to continue)'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
@@ -286,7 +286,7 @@ async function main() {
       return;
     }
     lastInterrupt = now;
-    console.log(dim('\n(press Ctrl-C again to exit)'));
+    console.log(dim('\n(Ctrl-C again to stop · Enter to continue)'));
   }
   onInterrupt = handleInterrupt;
   process.on('SIGINT', handleInterrupt);
