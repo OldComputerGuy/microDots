@@ -19,6 +19,7 @@ import { listWorkerTypes, readWorkerType } from './worker-types.mjs';
 import { newChatId, saveChat, listChats, loadChat } from './chats.mjs';
 import { ensureProject } from './home.mjs';
 import { sweepOrphanTabs, stopChromiumIfIdle } from './tabs.mjs';
+import { bold, dim, cyan, yellow, green, magenta, blue, red, gray } from './theme.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -44,17 +45,9 @@ const keepShots = (process.env.MICRODOT_KEEP_SHOTS ?? 'false') === 'true';
 const agentName = process.env.MICRODOT_AGENT || 'main';
 
 if (!apiKey) {
-  console.error('MicroDot: missing OPENROUTER_API_KEY (or an OpenRouterKey env var).');
+  console.error(red('MicroDot: missing OPENROUTER_API_KEY (or an OpenRouterKey env var).'));
   process.exit(1);
 }
-
-const dim = (s) => `\x1b[2m${s}\x1b[0m`;
-const cyan = (s) => `\x1b[36m${s}\x1b[0m`;
-const yellow = (s) => `\x1b[33m${s}\x1b[0m`;
-const bold = (s) => `\x1b[1m${s}\x1b[0m`;
-const green = (s) => `\x1b[32m${s}\x1b[0m`;
-const magenta = (s) => `\x1b[35m${s}\x1b[0m`;
-const blue = (s) => `\x1b[34m${s}\x1b[0m`;
 
 // Quiet by default: a KITT-style scanner instead of a wall of tool lines.
 // MICRODOT_VERBOSE=true restores the per-tool logging.
@@ -366,7 +359,7 @@ async function main() {
       console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
       renderHistory(messages);
     } catch (e) {
-      console.error(yellow(`resume failed: ${e?.message ?? e}`));
+      console.error(red(`resume failed: ${e?.message ?? e}`));
     }
   }
 
@@ -406,9 +399,11 @@ async function main() {
       }
     }
     autosave({ onlyIfUsed: true });
-    console.log(dim(name
-      ? `project "${name}" · space spaces/${agentName} · type ${workerType} · ${listChats().length} chat(s)`
-      : `root (no project) · space spaces/${agentName} · type ${workerType} · ${listChats().length} chat(s)`));
+    console.log(
+      name
+        ? `${cyan('project')} ${green(name)} ${dim(`· space spaces/${agentName} · type`)} ${magenta(workerType)} ${dim(`· ${listChats().length} chat(s)`)}`
+        : `${cyan('root (no project)')} ${dim(`· space spaces/${agentName} · type`)} ${magenta(workerType)} ${dim(`· ${listChats().length} chat(s)`)}`,
+    );
   }
 
   async function turn(p) {
@@ -450,7 +445,7 @@ async function main() {
     } catch (e) {
       busy.stop();
       md.flush();
-      if (!ac.signal.aborted) console.error(`\n${yellow('error:')} ${e?.message ?? e}`);
+      if (!ac.signal.aborted) console.error(`\n${red('error:')} ${e?.message ?? e}`);
     }
     if (ac.signal.aborted) console.log(dim('\n(interrupted)'));
     md.flush();
@@ -462,7 +457,7 @@ async function main() {
 
   if (once) {
     if (!prompt) {
-      console.error('usage: microdot --prompt "your task"');
+      console.error(red('usage: microdot --prompt "your task"'));
       process.exit(1);
     }
     await turn(prompt);
@@ -473,7 +468,16 @@ async function main() {
 
   console.log(
     cyan('MicroDot') +
-      dim(` · agent="${agentName}" · type=${workerType} · space=spaces/${agentName} · chat=${chat.id} · model=${model} · browser=${headless ? 'headless' : 'headful'}${allowSpawn ? ` · spawn=on(${maxDepth}/${maxAgents})` : ''} shared via ${host.cdpUrl}`),
+      dim(' · agent=') +
+      bold(agentName) +
+      dim(' · type=') +
+      magenta(workerType) +
+      dim(` · space=spaces/${agentName} · chat=${chat.id}`) +
+      dim(' · model=') +
+      bold(model) +
+      dim(
+        ` · browser=${headless ? 'headless' : 'headful'}${allowSpawn ? ` · spawn=on(${maxDepth}/${maxAgents})` : ''} shared via ${host.cdpUrl}`,
+      ),
   );
   help();
   while (true) {
@@ -524,7 +528,7 @@ async function main() {
         const r = await tools.execute('delete_tool', { name: toolName });
         console.log(dim(`deleted "${r.deleted}"`));
       } catch (e) {
-        console.log(yellow(`  ${e?.message ?? e}`));
+        console.log(red(`  ${e?.message ?? e}`));
       }
       continue;
     }
@@ -564,7 +568,7 @@ async function main() {
       } else {
         const text = readWorkerType(name).trim();
         if (!text) {
-          console.log(yellow(`  no worker type "${name}" in ./worker-types/`));
+          console.log(red(`  no worker type "${name}" in ./worker-types/`));
           continue;
         }
         workerType = name;
@@ -614,7 +618,7 @@ async function main() {
         } else {
           console.log(dim('saved chats (newest first):'));
           for (const c of list.slice(0, 20)) {
-            console.log(`  ${c.id}  ${dim(`${new Date(c.updatedAt).toLocaleString()} · ${c.count} msgs · ${c.agent} · ${c.title || ''}`)}`);
+            console.log(`  ${cyan(c.id)}  ${dim(`${new Date(c.updatedAt).toLocaleString()} · ${c.count} msgs · ${c.agent} · ${c.title || ''}`)}`);
           }
           console.log(dim('resume with: /resume <id>'));
           continue;
@@ -627,7 +631,7 @@ async function main() {
           console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
           renderHistory(messages);
         } catch (e) {
-          console.log(yellow(`  ${e?.message ?? e}`));
+          console.log(red(`  ${e?.message ?? e}`));
         }
       } else {
         try {
@@ -638,7 +642,7 @@ async function main() {
           console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
           renderHistory(messages);
         } catch (e) {
-          console.log(yellow(`  ${e?.message ?? e}`));
+          console.log(red(`  ${e?.message ?? e}`));
         }
       }
       continue;
@@ -683,12 +687,12 @@ async function main() {
           try {
             await loadProject(target, { fresh: false });
           } catch (e) {
-            console.log(yellow(`  ${e?.message ?? e}`));
+            console.log(red(`  ${e?.message ?? e}`));
           }
           continue;
         }
-        console.log(dim(`current project: ${cur || '(none — using the launch folder)'}`));
-        for (const p of list) console.log(`  ${p.name === cur ? '*' : ' '} ${p.name}  ${dim(`${p.chats} chat(s) · ${new Date(p.updatedAt).toLocaleString()}`)}`);
+        console.log(`${cyan('current project:')} ${cur ? green(cur) : dim('(none — root)')}`);
+        for (const p of list) console.log(`  ${p.name === cur ? cyan('*') : ' '} ${green(p.name)}  ${dim(`${p.chats} chat(s) · ${new Date(p.updatedAt).toLocaleString()}`)}`);
         console.log(dim('load: /project <name>   new: /project new <name>   delete: /project delete <name>   root: /project /'));
         continue;
       }
@@ -699,7 +703,7 @@ async function main() {
             createProject(name);
             await loadProject(name, { fresh: true });
           } catch (e) {
-            console.log(yellow(`  ${e?.message ?? e}`));
+            console.log(red(`  ${e?.message ?? e}`));
           }
         }
         continue;
@@ -711,7 +715,7 @@ async function main() {
             deleteProject(name);
             console.log(dim(`deleted project "${name}"`));
           } catch (e) {
-            console.log(yellow(`  ${e?.message ?? e}`));
+            console.log(red(`  ${e?.message ?? e}`));
           }
         }
         continue;
@@ -720,18 +724,18 @@ async function main() {
         try {
           await loadProject(null, { fresh: false }); // back to the root (no project)
         } catch (e) {
-          console.log(yellow(`  ${e?.message ?? e}`));
+          console.log(red(`  ${e?.message ?? e}`));
         }
         continue;
       }
       if (!existsProject(sub)) {
-        console.log(yellow(`  no project "${sub}" — create it with: /project new ${sub}`));
+        console.log(red(`  no project "${sub}" — create it with: /project new ${sub}`));
         continue;
       }
       try {
         await loadProject(sub, { fresh: false });
       } catch (e) {
-        console.log(yellow(`  ${e?.message ?? e}`));
+        console.log(red(`  ${e?.message ?? e}`));
       }
       continue;
     }

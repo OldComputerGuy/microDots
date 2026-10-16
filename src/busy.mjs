@@ -1,6 +1,7 @@
 // Knight-Rider style busy indicator: a row of dashes with an 'o' bouncing
 // back and forth (e.g. "-----o------" -> "------o-----" -> ...).
 // Only draws on a TTY; on a pipe it is a no-op (but still tracks state).
+import { cyan, dim } from './theme.mjs';
 export function createBusy({ stream = process.stdout } = {}) {
   const width = 20;
   let pos = 0;
@@ -14,8 +15,8 @@ export function createBusy({ stream = process.stdout } = {}) {
   function render() {
     if (!tty || !active || suspended) return;
     const chars = new Array(width).fill('-');
-    chars[pos] = 'o';
-    const line = (label ? `${label}  ` : '') + chars.join('');
+    chars[pos] = cyan('o');
+    const line = (label ? `${dim(label)}  ` : '') + dim(chars.join(''));
     stream.write(`\r\x1b[2K${line}`);
   }
   function tick() {

@@ -9,6 +9,7 @@
 // cursor, Backspace/Delete edit at the cursor, and typing/pasting inserts at it.
 //
 // ask(prompt) resolves with the submitted text (may contain newlines).
+import { bold, dim, cyan } from './theme.mjs';
 export function createPrompt({ stdin = process.stdin, stdout = process.stdout, onEscape, onInterrupt, suggest } = {}) {
   const isTTY = !!stdin.isTTY;
   const DEBUG = process.env.MICRODOT_DEBUG_INPUT === '1';
@@ -143,7 +144,8 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     let menuRows = 0;
     if (items.length) {
       const mlines = items.map(
-        (c, i) => `${i === sel ? '\u203a' : ' '} ${c.label}${c.help ? `  \u001b[2m${c.help}\u001b[0m` : ''}`,
+        (c, i) =>
+          `${i === sel ? cyan('\u203a') : ' '} ${i === sel ? bold(c.label) : c.label}${c.help ? `  ${dim(c.help)}` : ''}`,
       );
       menuRows = rowsOf(mlines, w);
       out += '\n' + mlines.join('\n');
@@ -168,7 +170,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     out += '\r\u001b[0J';
     const lines = [
       chooser.prompt,
-      ...chooser.options.map((o, i) => `${i === chooser.index ? '\u203a' : ' '} ${o.label}`),
+      ...chooser.options.map((o, i) => (i === chooser.index ? `${cyan('\u203a')} ${bold(o.label)}` : `  ${dim(o.label)}`)),
     ];
     out += lines.join('\n');
     stdout.write(out);

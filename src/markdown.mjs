@@ -1,15 +1,6 @@
 // Tiny streaming markdown → ANSI renderer for the terminal.
 // Line-buffered so it works with token streaming without flicker.
-const b = (s) => `\x1b[1m${s}\x1b[22m`;
-const i = (s) => `\x1b[3m${s}\x1b[23m`;
-const u = (s) => `\x1b[4m${s}\x1b[24m`;
-const dim = (s) => `\x1b[2m${s}\x1b[22m`;
-const red = (s) => `\x1b[31m${s}\x1b[39m`;
-const grn = (s) => `\x1b[32m${s}\x1b[39m`;
-const yel = (s) => `\x1b[33m${s}\x1b[39m`;
-const blu = (s) => `\x1b[34m${s}\x1b[39m`;
-const mag = (s) => `\x1b[35m${s}\x1b[39m`;
-const cyn = (s) => `\x1b[36m${s}\x1b[39m`;
+import { bold as b, italic as i, underline as u, dim, red, green as grn, yellow as yel, blue as blu, magenta as mag, cyan as cyn } from './theme.mjs';
 
 const stripAnsi = (s) => String(s).replace(/\x1b\[[0-9;]*m/g, '');
 

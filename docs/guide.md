@@ -255,6 +255,7 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_VERBOSE` | `false` | show per-tool lines (else the scanner) |
 
 ## Notes
+- **Colour is automatic.** Output is colourised on a TTY and automatically **off** when piped/redirected or when `NO_COLOR` is set; `FORCE_COLOR=1` forces it on. The palette lives in `src/theme.mjs` (semantic roles: `ok`/`warn`/`err`, `label`, `project`, `engine`, `path`, `meta`).
 - Background actions are **quiet by default**: a KITT-style scanner (`─────o─────`, the `o` bouncing) with the current tool name, cleared for the answer. `MICRODOT_VERBOSE=true` restores per-tool `→`/`←` lines.
 - Replies render as **coloured terminal markdown** (headings, bullets, bold/italic, inline code, fenced code, links, rules, and **aligned box tables**).
 - The shared Chromium uses `<engine>/.chromium-profile/` and is started/stopped automatically.
