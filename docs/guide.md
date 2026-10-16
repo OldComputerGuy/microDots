@@ -219,7 +219,8 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_TERMINAL` | `x-terminal-emulator` | terminal for `/new` on Linux |
 | `MICRODOT_AGENT` | `main` | agent name for this window |
 | `MICRODOT_PROJECT` | — | current project name (else the launch folder) |
-| `MICRODOT_PROJECTS_DIR` | `<engine>/projects` | where named projects live |
+| `MICRODOT_DATA_DIR` | `~/.microdot` | user data dir (kept outside the install) |
+| `MICRODOT_PROJECTS_DIR` | `~/.microdot/projects` | where named projects live |
 | `MICRODOT_PRUNE_NOTES` | `true` | prune a space's `notes/` on exit |
 | `MICRODOT_NOTES_KEEP` | `400` | keep the newest N note files |
 | `MICRODOT_NOTES_MAX_MB` | `25` | notes size budget (MB) |
