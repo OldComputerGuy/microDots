@@ -79,6 +79,14 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
     // a safety net. Clamping here double-corrected Backspace (caret one short).
   }
 
+  // Preview an entry in the menu without collapsing it: set the line to `next`
+  // but keep `filter` as the typed token, so suggestions() still returns the
+  // whole list and ↑/↓ can keep scrolling.
+  function preview(next) {
+    input = next;
+    if (cur > input.length) cur = input.length;
+  }
+
   // Suggestions for the current typed token, from the caller's provider.
   function suggestions() {
     if (!filter || filter.includes('\n')) return [];
@@ -310,7 +318,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout, o
           if (seq.key === 'up' || seq.key === 'down') {
             if (items.length) {
               sel = (sel + (seq.key === 'up' ? -1 : 1) + items.length) % items.length;
-              edit(items[sel].complete); // preview the highlighted command
+              preview(items[sel].complete); // browse — keep the menu open
               cur = input.length;
               render();
             } else {
