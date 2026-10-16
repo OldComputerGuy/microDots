@@ -25,6 +25,7 @@ export function buildSystem({ space, type = 'default', mission, context, deliver
     s += `\n\nYou are a sub-agent, working autonomously on ONE mission.`;
     if (context) s += `\n\nContext from your parent:\n${context}`;
     if (deliverables) s += `\n\nDeliverables your parent needs:\n${deliverables}`;
+    s += `\n\nYour space is temporary scratch: when the run ends your report and the files you list in artifacts are archived under the parent, and the working copy is removed. So put anything that must outlive you in report.md / report.json (list produced files in artifacts), or build a reusable tool with create_tool.`;
     s += `\n\nWhen you finish, write report.json in your space with { summary, findings:[..], sources:[{title,url}], artifacts:[..], children:[..] }, write a readable report.md, then reply with a concise summary. If part of the mission needs deeper work you may call spawn_subagent (subject to limits) and include its digest under children[].`;
   }
   return s;

@@ -1,12 +1,13 @@
 // Sub-agent spawner, shared by the CLI and the library runtime.
 // Returns makeDelegate({ parentSpace, depth }) -> a `delegate` function with a
 // `delegate.many(tasks, concurrency)` batch method.
-import { mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readFileSync, existsSync, cpSync } from 'node:fs';
 import { resolve, relative } from 'node:path';
 import { createBrowserHost } from './browser-host.mjs';
 import { createTools } from './tools.mjs';
 import { runAgent } from './agent.mjs';
 import { buildSystem } from './prompt.mjs';
+import { hostToSandboxPath } from './tool-sandbox.mjs';
 
 const slugify = (s) =>
   String(s || '')
@@ -109,17 +110,51 @@ export function makeSpawner(config) {
       } catch {
         /* none written */
       }
+
+      // Sub-agent spaces are scratch (deleted at end of run). Preserve the
+      // child's report + produced files into the ROOT agent's space, so the
+      // digest's paths stay valid after cleanup. (Skipped in debug, which keeps
+      // the whole tree anyway.)
+      let keptDir = null;
+      if (!debug) {
+        try {
+          const rootSpace = String(parentSpace).split(/[\\/]subagents[\\/]/)[0];
+          keptDir = resolve(rootSpace, 'subagents-kept', relative(rootSpace, childSpace));
+          cpSync(childSpace, keptDir, {
+            recursive: true,
+            filter: (src) => {
+              const b = src.split(/[\\/]/).pop();
+              if (b === 'shots' || b === 'notes') return false;
+              if (/\.?venv$/i.test(b)) return false;
+              return true;
+            },
+          });
+        } catch {
+          keptDir = null;
+        }
+      }
+      const refSpace = keptDir || childSpace;
+      const remap = (a) => {
+        const s = String(a);
+        if (!keptDir) return s;
+        const sbChild = hostToSandboxPath(childSpace);
+        const sbKeep = hostToSandboxPath(keptDir);
+        if (s.startsWith(childSpace)) return keptDir + s.slice(childSpace.length);
+        if (s.startsWith(sbChild)) return sbKeep + s.slice(sbChild.length);
+        return s;
+      };
+
       const lastAssistant = [...childMessages].reverse().find((m) => m.role === 'assistant' && typeof m.content === 'string');
       const digest = {
         child: childName,
-        space: rel(childSpace),
+        space: rel(refSpace),
         status,
         mission: args.mission,
         summary: report?.summary || lastAssistant?.content || '(no summary)',
         findings: report?.findings || [],
         sources: report?.sources || [],
-        artifacts: report?.artifacts || [],
-        report_path: existsSync(resolve(childSpace, 'report.md')) ? rel(resolve(childSpace, 'report.md')) : null,
+        artifacts: (report?.artifacts || []).map(remap),
+        report_path: existsSync(resolve(refSpace, 'report.md')) ? rel(resolve(refSpace, 'report.md')) : null,
         children: report?.children || [],
       };
       log?.(`└─ ${childName} [${status}] ${Date.now() - started}ms: ${String(digest.summary).slice(0, 120)}`);
