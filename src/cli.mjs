@@ -162,7 +162,7 @@ function help() {
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
   console.log(dim('  /project [<name>]    show/load a project (resumes it); new <name> / delete <name> / off'));
   console.log(dim('  (paste multi-line text directly, then press Enter to run it)'));
-  console.log(dim('  (Esc stops a running turn · Ctrl-C again within a second stops)'));
+  console.log(dim('  (Esc stops a running turn · while it runs, Ctrl-C again stops; idle Ctrl-C is ignored)'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
@@ -273,11 +273,13 @@ async function main() {
     }
   }
 
-  // Ctrl-C: the first press only warns and lets the agent keep running; a second
-  // press within EXIT_MS stops everything. Otherwise nothing happens.
+  // Ctrl-C does nothing when idle (so a stray Ctrl-C/"copy" can't hurt).
+  // Only while a turn is running: first press warns, a second within EXIT_MS
+  // stops everything. Exit when idle with /exit.
   const EXIT_MS = Math.max(200, Number(process.env.MICRODOT_EXIT_CONFIRM_MS ?? 1000) || 1000);
   let lastInterrupt = 0;
   function handleInterrupt() {
+    if (!activeAbort) return; // idle → ignore Ctrl-C entirely
     const now = Date.now();
     if (now - lastInterrupt < EXIT_MS) {
       console.log(dim('\n(exiting)'));
