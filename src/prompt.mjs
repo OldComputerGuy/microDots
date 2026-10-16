@@ -8,6 +8,7 @@
 // ask(prompt) resolves with the submitted text (may contain newlines).
 export function createPrompt({ stdin = process.stdin, stdout = process.stdout } = {}) {
   const isTTY = !!stdin.isTTY;
+  const DEBUG = process.env.MICRODOT_DEBUG_INPUT === '1';
   const pending = [];
   let waiter = null;
   let input = '';
@@ -41,6 +42,7 @@ export function createPrompt({ stdin = process.stdin, stdout = process.stdout } 
 
   stdin.on('data', (chunk) => {
     const s = String(chunk);
+    if (DEBUG) process.stderr.write(`\x1b[2m[input] ${JSON.stringify(s)}\x1b[0m\n`);
     let i = 0;
     while (i < s.length) {
       if (!inPaste && s.startsWith('\x1b[200~', i)) {
