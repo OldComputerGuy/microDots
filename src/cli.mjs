@@ -75,7 +75,7 @@ let activeAbort = null; // AbortController for the running turn (Esc stops it)
 let onInterrupt = null; // Ctrl-C handler, installed in main()
 const COMMANDS = [
   { name: '/new', help: 'open a new worker' },
-  { name: '/project', help: 'show/load/delete a project' },
+  { name: '/project', help: 'show/load/delete a project (/ = root)' },
   { name: '/resume', help: 'list or resume a chat' },
   { name: '/name', help: "set this chat's title" },
   { name: '/tools', help: 'list built-in and custom tools' },
@@ -189,7 +189,7 @@ function spawnAgentTerminal(name, type) {
 function help() {
   console.log(dim('commands:'));
   console.log(dim('  /new [name] [type]   open a new MicroDot CLI (new worker + space)'));
-  console.log(dim('  /project [<name>]    show/load a project — no name: pick from a list (resumes its last chat); new/delete/off'));
+  console.log(dim('  /project [<name>]    show/load a project — no name: pick from a list (resumes its last chat); new/delete; "/" or "off" = root'));
   console.log(dim('  (paste multi-line text directly, then press Enter to run it)'));
   console.log(dim('  (type / for a command menu — Up/Down or Tab fill the line, Enter runs it)'));
   console.log(dim('  (Up/Down (no menu) recall previous inputs — commands included)'));
@@ -359,11 +359,13 @@ async function main() {
     }
   }
 
-  // Switch the active project and re-init the session for it. `fresh` starts a
-  // clean chat; otherwise the project's most recent chat is resumed.
-  async function loadProject(name, { fresh = false } = {}) {
+  // Switch the active project and re-init the session for it. `null` means the
+  // root (no project) layer. `fresh` starts a clean chat; otherwise the layer's
+  // most recent chat is resumed.
+  async function loadProject(name = null, { fresh = false } = {}) {
     autosave({ onlyIfUsed: true });
-    setCurrentProject(name);
+    if (name) setCurrentProject(name);
+    else clearCurrentProject();
     ensureProject();
     spacePath = ensureSpace(agentName);
     mission = readMission(agentName).trim();
@@ -393,7 +395,9 @@ async function main() {
       }
     }
     autosave({ onlyIfUsed: true });
-    console.log(dim(`project "${name}" · space spaces/${agentName} · type ${workerType} · ${listChats().length} chat(s)`));
+    console.log(dim(name
+      ? `project "${name}" · space spaces/${agentName} · type ${workerType} · ${listChats().length} chat(s)`
+      : `root (no project) · space spaces/${agentName} · type ${workerType} · ${listChats().length} chat(s)`));
   }
 
   async function turn(p) {
@@ -642,16 +646,17 @@ async function main() {
             label: `${p.name}${p.name === cur ? '  (current)' : ''}  · ${p.chats} chat(s) · ${new Date(p.updatedAt).toLocaleString()}`,
             value: p.name,
           }));
+          // A selectable entry for the root (no project) layer.
+          items.unshift({ label: `(root — no project, generic)${cur ? '' : '  (current)'}`, value: '__root__' });
           const pick = await input.choose('project?  (Up/Down · Enter resumes it · Esc cancels)', items);
           if (!pick) {
             console.log(dim('(unchanged)'));
             continue;
           }
-          if (pick !== cur) {
-            console.log(dim(`loading "${pick}"…`));
-          }
+          const target = pick === '__root__' ? null : pick;
+          if (target !== (cur || null)) console.log(dim(`loading ${target ? `"${target}"` : 'the root (no project)'}…`));
           try {
-            await loadProject(pick, { fresh: false });
+            await loadProject(target, { fresh: false });
           } catch (e) {
             console.log(yellow(`  ${e?.message ?? e}`));
           }
@@ -659,7 +664,7 @@ async function main() {
         }
         console.log(dim(`current project: ${cur || '(none — using the launch folder)'}`));
         for (const p of list) console.log(`  ${p.name === cur ? '*' : ' '} ${p.name}  ${dim(`${p.chats} chat(s) · ${new Date(p.updatedAt).toLocaleString()}`)}`);
-        console.log(dim('load: /project <name>   new: /project new <name>   delete: /project delete <name>   off: /project off'));
+        console.log(dim('load: /project <name>   new: /project new <name>   delete: /project delete <name>   root: /project / (or off)'));
         continue;
       }
       if (sub === 'new') {
@@ -686,9 +691,12 @@ async function main() {
         }
         continue;
       }
-      if (sub === 'off') {
-        clearCurrentProject();
-        console.log(dim('project cleared — using the launch folder'));
+      if (sub === 'off' || sub === 'root' || sub === '/') {
+        try {
+          await loadProject(null, { fresh: false }); // back to the root (no project)
+        } catch (e) {
+          console.log(yellow(`  ${e?.message ?? e}`));
+        }
         continue;
       }
       if (!existsProject(sub)) {
