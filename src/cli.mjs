@@ -101,7 +101,7 @@ const input = createPrompt({
 });
 const ask = (q) => input.ask(q);
 
-// Approval for create_tool (skip with MICRODOT_APPROVE_CREATE_TOOL=false).
+// Approval for create_tool (off by default; enable with MICRODOT_APPROVE_CREATE_TOOL=true).
 async function confirmCreate(action, code) {
   if (!process.stdin.isTTY) {
     console.log(dim(`  (non-interactive) auto-approving ${action}`));

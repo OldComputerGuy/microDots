@@ -442,7 +442,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
 
     // Pattern-gated approval: only ask when the code touches risky capabilities.
     const risks = scanToolCode(args.code);
-    if ((process.env.MICRODOT_APPROVE_CREATE_TOOL ?? 'true') !== 'false' && risks.length) {
+    if ((process.env.MICRODOT_APPROVE_CREATE_TOOL ?? 'false') === 'true' && risks.length) {
       if (confirm) {
         const ok = await confirm(`create tool "${name}" — risky: ${risks.join(', ')}`, args.code);
         if (!ok) return { declined: true, name, note: 'The user declined to create this tool.' };

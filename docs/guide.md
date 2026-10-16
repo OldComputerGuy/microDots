@@ -110,7 +110,7 @@ MicroDot can **write its own tools** and use them immediately.
 - The tool is registered live (callable in the **same** turn) and saved to the project layer (`<project>/.microdot/tools/<name>.mjs`).
 - Saved tools **auto-load** at startup, so they persist across sessions.
 - Manage them with **`list_tools`** (built-ins + your custom tools) and **`delete_tool`** (removes the tool and its file).
-- **Approval is pattern-gated:** harmless tools are saved silently; a tool whose code touches risky capabilities (`child_process`, `require`, dynamic `import`, direct `fs`/`fetch`, absolute paths, `process`, `eval`) prompts for y/N first. Disable with `MICRODOT_APPROVE_CREATE_TOOL=false`.
+- Tools are saved **without asking** by default. Optionally set `MICRODOT_APPROVE_CREATE_TOOL=true` to be prompted (y/N) when a tool's code touches risky capabilities (`child_process`, `require`, dynamic `import`, direct `fs`/`fetch`, absolute paths, `process`, `eval`).
 In the sandbox, `ctx` gives `agentId`, `fetch(url,opts)`, `log(...)`, `fs` (jailed to the worker's space), and `browser.*` (bridged to the host browser).
 
 Example tool file (the `code` is the body of the async function; it runs only in the worker):
@@ -195,7 +195,7 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_SKILLS_DIR` | *(layered)* | explicit single dir for skills |
 | `MICRODOT_WORKER_TYPES_DIR` | *(layered)* | explicit single dir for worker types |
 | `MICRODOT_WORKER_TYPE` | *(space)* | worker type for a new worker |
-| `MICRODOT_APPROVE_CREATE_TOOL` | `true` | pattern-gated approval before saving a risky tool |
+| `MICRODOT_APPROVE_CREATE_TOOL` | `false` | prompt before saving a risky tool (off by default) |
 | `MICRODOT_ALLOW_SPAWN` | `true` | sub-agents enabled |
 | `MICRODOT_MAX_DEPTH` | `3` | max sub-agent nesting depth |
 | `MICRODOT_MAX_AGENTS` | `16` | max agents per run (whole tree) |
