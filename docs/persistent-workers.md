@@ -1,8 +1,7 @@
 # .workers — design
 
-> **Status: design only, not implemented.** This document captures the concept
-> before any code. It builds on the existing sub-agent / worker-type / space /
-> chat machinery; nothing here changes today's behaviour.
+> **Status: design locked — implementing.** The decisions below are settled; the
+> build follows. Nothing here changes today's behaviour until it ships.
 
 ## Why
 
@@ -122,16 +121,17 @@ per-agent browser tabs, the project layer.
   workers/
     .doc_search/               ← a .worker (dot = hidden)
       context.json             ← { name, type, mission, messages, createdAt, updatedAt }
-      ...                       ← files it works on / produces
+      mission.md
+      space/                   ← the .worker's files (its ctx.fs root)
     .pdf_extract/
   tools/ skills/ worker-types/ ← shared with the project
 ```
 
-A .worker is attached to the project and **shares the project's layer and
-workspace**; its own directory holds its context and its working files. (Whether
-a .worker shares the project's *main* space or keeps its own sub-area is an open
-question — see below; the recommended default is its own sub-area, to avoid file
-collisions with the main agent.)
+A .worker is attached to the project and **shares the project's layer** (tools /
+skills / worker-types), but keeps its **own sub-area** — `workers/.<name>/space/`
+— so its files never collide with the main agent's space. The `mission.md` and
+`context.json` sit next to that space (outside it), so the .worker can't clobber
+its own state while working.
 
 ## Execution model
 
@@ -143,7 +143,7 @@ result, and is compacted as needed. No idle process, no queue — consistent wit
 Because a .worker is **project-scoped and shares the project's layer**, there is
 **no active-project switch**: it runs exactly like a sub-agent (explicit space,
 shared layer). This is the main reason to prefer project-scoped over top-level
-.workers.
+.workers. A tab is opened for the assignment and closed when the .worker reports.
 
 **Rejected for now:** an always-on daemon per .worker (background loops, IPC,
 "is it busy?" state). Heavier, and against the small-server ethos.
@@ -178,7 +178,22 @@ Standing entities grow without bound, so these ship **with** the feature, not af
 
 - Names are dot-prefixed and unique per project; `assign_worker` resolves by name.
 - A .worker runs with the same sandbox/tool rules as any agent (space jailed; tools host-managed; browser tab on demand).
-- Decide whether a .worker may `spawn_subagent` / create further .workers (leaning: may spawn sub-agents; may **not** create .workers, to avoid runaway fan-out — or gate behind a cap).
+- Decide whether a .worker may `spawn_subagent` / create further .workers: **may spawn sub-agents; may not create .workers** (that is reserved for the main agent, to prevent runaway fan-out).
+
+## Decisions (locked)
+
+1. **Own sub-area.** Each .worker keeps its files under `workers/.<name>/space/`; it shares the project's **layer**, not the main agent's space.
+2. **On-demand, synchronous.** `assign_worker` runs the .worker in-process to completion and returns; no queue, no daemon.
+3. **Tab per assignment.** A .worker opens a browser tab for an assignment and closes it when it reports (same as a sub-agent).
+4. **May spawn sub-agents; may not create .workers** (see above).
+5. **Transcript + memory.** The kept, compacted message transcript is the context; durable knowledge lives in the .worker's own files in its space.
+6. **Reports reuse the sub-agent digest schema** — `summary / findings / sources / artifacts / report_path`, with `report.md` + `report.json` in its space — so the main agent handles sub-agent and .worker replies uniformly.
+7. **Outside the agent tree.** .workers don't count toward `MAX_DEPTH`/`MAX_AGENTS`; they are bounded by `MICRODOT_MAX_WORKERS`.
+8. **Human view: `/workers`.** .workers stay hidden from `/project` and are *not* listed in `/resume`; `/workers` lists / opens / retires them.
+9. **"When to use" guidance lives in the system prompt** (a short policy, using the criteria above); a playbook skill can be added later.
+10. **Retirement is archival** — `retire_worker` moves the .worker to an archive (reversible; never a delete).
+
+**Deferred:** always-on daemons; idle auto-retirement; cross-project .workers; .worker-to-.worker assignment; library (`createRuntime`) wiring.
 
 ## Relationship to existing pieces
 
@@ -189,16 +204,7 @@ Standing entities grow without bound, so these ship **with** the feature, not af
 
 ## Open questions
 
-1. **Share the main space, or its own sub-area?** Recommendation: own sub-area (`workers/.<name>/`) to avoid collisions; confirm.
-2. Synchronous `assign` vs a background queue (start on-demand; revisit).
-3. Does a .worker hold a browser tab persistently, or open one per assignment?
-4. May a .worker spawn sub-agents? Create further .workers?
-5. Memory model: transcript-only, or a curated memory file per .worker?
-6. Cost controls: per-.worker turn/step budgets? Idle retirement after N days?
-7. Human UX: `/workers` list/open/retire; do .workers show in `/resume`?
-8. Do .workers count toward depth, or sit outside the agent tree?
-9. Where does the "when to use a .worker" guidance live — a system-prompt line, a playbook skill, or both? How does the agent decide to *promote* a recurring sub-agent?
-10. Should a .worker's report reuse the exact **sub-agent digest schema** (`report.json`/`report.md` + artifacts), so the main agent handles sub-agent and .worker replies uniformly?
+_(All resolved — see **Decisions (locked)** above.)_
 
 ## Non-goals (for now)
 
