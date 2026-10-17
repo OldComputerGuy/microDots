@@ -1,7 +1,7 @@
 // MicroDot CLI: one agent per process, all attached to one shared Chromium.
 // `/new` opens a new terminal (a new agent).
 import { createPrompt } from './input.mjs';
-import { readdirSync, readFileSync, rmSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync, existsSync, statSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { execFile } from 'node:child_process';
 import { createBrowserHost } from './browser-host.mjs';
@@ -20,6 +20,7 @@ import { newChatId, saveChat, listChats, loadChat } from './chats.mjs';
 import { ensureProject } from './home.mjs';
 import { sweepOrphanTabs, stopChromiumIfIdle } from './tabs.mjs';
 import { bold, dim, cyan, yellow, green, magenta, blue, red, gray } from './theme.mjs';
+import { addReference, removeReference, setReferences, listReferences, referencePaths } from './references.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -57,6 +58,31 @@ const busy = createBusy();
 // Clear the terminal (screen + scrollback) without touching the conversation.
 const clearScreen = () => process.stdout.write('\u001b[2J\u001b[3J\u001b[H');
 
+// ---- Read-only file references ----------------------------------------------
+const looksLikePath = (s) => /[\\/:]/.test(s);
+function parsePaths(str) {
+  const out = [];
+  const re = /"([^"]+)"|'([^']+)'|(\S+)/g;
+  let m;
+  while ((m = re.exec(str))) out.push(m[1] || m[2] || m[3]);
+  return out;
+}
+// A dropped file path is the whole input and every token is a real file that
+// looks like a path. Returns the paths, else null.
+function bareFilePaths(line) {
+  if (!line) return null;
+  const parts = parsePaths(line);
+  if (!parts.length || !parts.every((p) => looksLikePath(p))) return null;
+  const ok = parts.every((p) => {
+    try {
+      return existsSync(resolve(process.cwd(), p)) && statSync(resolve(process.cwd(), p)).isFile();
+    } catch {
+      return false;
+    }
+  });
+  return ok ? parts : null;
+}
+
 // Each worker has its own space: spaces/<worker_name>/ (mission.md + files).
 // Start with NO project unless one is set explicitly (MICRODOT_PROJECT); select
 // one at runtime with /project (which resumes its chat).
@@ -78,6 +104,9 @@ const COMMANDS = [
   { name: '/project', help: 'show/load/delete a project (/ = root)' },
   { name: '/resume', help: 'list or resume a chat' },
   { name: '/name', help: "set this chat's title" },
+  { name: '/ref', help: 'add a read-only file reference' },
+  { name: '/refs', help: 'list reference files' },
+  { name: '/unref', help: 'remove a reference' },
   { name: '/tools', help: 'list built-in and custom tools' },
   { name: '/delete', help: 'delete a custom tool' },
   { name: '/skills', help: 'list saved skills' },
@@ -196,6 +225,8 @@ function help() {
   console.log(dim('  (type / for a command menu — Up/Down or Tab fill the line, Enter runs it)'));
   console.log(dim('  (Up/Down (no menu) recall previous inputs — commands included)'));
   console.log(dim('  (Esc stops a running turn · while it runs, Ctrl-C again stops; idle Ctrl-C is ignored)'));
+  console.log(dim('  /ref <path>   add a read-only file reference (or drop a file into the prompt)'));
+  console.log(dim('  /refs         list reference files; /unref <path|all> removes one'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
   console.log(dim('  /delete <n>   delete a custom tool'));
   console.log(dim('  /skills       list saved skills'));
@@ -331,7 +362,7 @@ async function main() {
   onInterrupt = handleInterrupt;
   process.on('SIGINT', handleInterrupt);
   // Conversation state (persisted so it can be resumed later).
-  const chat = { id: newChatId(), title: '', agent: agentName, type: workerType, space: `spaces/${agentName}`, cwd: process.env.MICRODOT_LAUNCH_DIR || process.cwd(), model, createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
+  const chat = { id: newChatId(), title: '', agent: agentName, type: workerType, space: `spaces/${agentName}`, cwd: process.env.MICRODOT_LAUNCH_DIR || process.cwd(), model, createdAt: Date.now(), updatedAt: Date.now(), messages: [], refs: [] };
   function autosave({ onlyIfUsed = false } = {}) {
     chat.messages = messages;
     // Don't persist a chat that was never actually used (no user turn) — that
@@ -355,11 +386,33 @@ async function main() {
       const c = loadChat(resumeId);
       chat.id = c.id;
       chat.title = c.title || '';
+      chat.refs = Array.isArray(c.refs) ? c.refs : [];
+      setReferences(chat.refs);
+      SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
       messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
       console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
       renderHistory(messages);
     } catch (e) {
       console.error(red(`resume failed: ${e?.message ?? e}`));
+    }
+  }
+
+  // Rebuild the system prompt (e.g. after the reference list changes).
+  function refreshSystem() {
+    SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
+    messages[0] = { role: 'system', content: SYSTEM };
+  }
+  function addRefToChat(p) {
+    try {
+      const r = addReference(p);
+      const known = chat.refs.includes(r.host);
+      if (!known) chat.refs.push(r.host);
+      setReferences(chat.refs);
+      refreshSystem();
+      autosave({ onlyIfUsed: true });
+      console.log(dim(`${known ? 'already referenced' : 'reference added'}: ${r.host}  (sandbox: ${r.sandbox})`));
+    } catch (e) {
+      console.log(red(`  ${e.message}`));
     }
   }
 
@@ -375,6 +428,8 @@ async function main() {
     mission = readMission(agentName).trim();
     workerType = (process.env.MICRODOT_WORKER_TYPE || '').trim() || getSpaceType(agentName) || 'default';
     setSpaceType(agentName, workerType);
+    chat.refs = [];
+    setReferences([]);
     SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
     tools = await createTools({
       host,
@@ -393,6 +448,9 @@ async function main() {
         const c = loadChat(list[0].id);
         chat.id = c.id;
         chat.title = c.title || '';
+        chat.refs = Array.isArray(c.refs) ? c.refs : [];
+        setReferences(chat.refs);
+        SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
         messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
         console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
         renderHistory(messages);
@@ -494,6 +552,34 @@ async function main() {
       const type = parts[1] || 'default'; // no type stated -> default
       const spawned = spawnAgentTerminal(given, type);
       console.log(dim(`opened a new MicroDot CLI window (agent "${spawned}", worker type "${type}") — shares the same Chromium`));
+      continue;
+    }
+    if (line === '/ref' || line.startsWith('/ref ')) {
+      const arg = line.slice(4).trim();
+      if (!arg) console.log(dim('usage: /ref <path>   (or drop a file into the prompt)'));
+      else for (const p of parsePaths(arg)) addRefToChat(p);
+      continue;
+    }
+    if (line === '/refs') {
+      const list = listReferences();
+      if (!list.length) console.log(dim('no reference files — add one with /ref <path>'));
+      else {
+        console.log(cyan('references (read-only):'));
+        for (const r of list) console.log(`  ${green(r.path)}  ${dim(`(sandbox: ${r.sandbox})`)}`);
+      }
+      continue;
+    }
+    if (line === '/unref' || line.startsWith('/unref ')) {
+      const arg = line.slice(6).trim();
+      if (!arg) console.log(dim('usage: /unref <path | all>'));
+      else {
+        const n = removeReference(arg);
+        chat.refs = referencePaths();
+        setReferences(chat.refs);
+        refreshSystem();
+        autosave({ onlyIfUsed: true });
+        console.log(dim(n ? `removed ${n} reference(s)` : `no matching reference for "${arg}"`));
+      }
       continue;
     }
     if (line === '/tools') {
@@ -748,6 +834,9 @@ async function main() {
       chat.id = newChatId();
       chat.title = '';
       chat.createdAt = Date.now();
+      chat.refs = [];
+      setReferences([]);
+      SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
       messages = [{ role: 'system', content: SYSTEM }];
       clearScreen();
       console.log(dim('cleared the context and the screen (previous chat saved — /resume to reopen)'));
@@ -758,8 +847,17 @@ async function main() {
       chat.id = newChatId();
       chat.title = '';
       chat.createdAt = Date.now();
+      chat.refs = [];
+      setReferences([]);
+      SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
       messages = [{ role: 'system', content: SYSTEM }];
       console.log(dim('started a new conversation (previous chat saved — /resume to reopen)'));
+      continue;
+    }
+    // A dropped file path becomes a read-only reference (never its contents).
+    const dropped = bareFilePaths(line);
+    if (dropped) {
+      for (const p of dropped) addRefToChat(p);
       continue;
     }
     await turn(line);

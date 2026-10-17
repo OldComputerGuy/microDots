@@ -17,6 +17,7 @@
 **A Dot on a diet** — a bare-bones, **self-extending** agent built to run on small servers. No CopilotKit, no React, no server, no DB, no Docker.
 
 - **Builds its own tools** - `create_tool` (sandboxed) + `list_tools` / `delete_tool` / `copy_tool`.
+- **Read-only file references** — hand it a path (or drop a file); it decides whether to inspect it, search it, or delegate analysis to a sub-agent. Non-text extraction (PDF, images) is done by agent-built tools.
 - **Sandboxed, with no host fallback** — self-authored tools run only in an isolated Linux worker (WSL on Windows / native on Linux), jailed to their space; if the worker can't start, the tool is refused.
 - **Delegates to itself** — `spawn_subagent` / `spawn_subagents`: recursive, parallel, nested spaces, roll-up, hard caps.
 - **One process, one Chromium** — a tab per agent; started on demand and stopped when idle.
@@ -51,6 +52,7 @@ microdot.bat --resume <id>              # resume a saved chat
 | `/project [name]` | show/load a project (resumes its last chat); no name: pick from a list; `new`/`delete`; `/project /` returns to the root |
 | `/resume [id]` | resume a saved chat — no id: pick from a list (Up/Down, Enter) |
 | `/name [title]` | show or set this chat's title |
+| `/ref <path>`, `/refs`, `/unref` | add / list / remove read-only file references (or drop a file); refs are saved with the chat |
 | `/tools`, `/delete <n>` | list / delete custom tools — in the root, `/tools` lists every project's tools grouped by project |
 | `/skills` | list saved skills |
 | `/type [name]` | show or set this worker's type |

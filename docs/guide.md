@@ -138,6 +138,16 @@ export const definition = { type:'function', function:{ name:'slugify', descript
 export const code = "return { slug: String(args.text).toLowerCase().replace(/[^a-z0-9]+/g,'-') };";
 ```
 
+## File references (read-only)
+
+Point the agent at a file without loading it into context — it decides how much to consume, like a person: glance, search, page, read fully, or hand it to a sub-agent.
+
+- **`/ref <path>`** (or drop a file into the prompt) registers it; **`/refs`** lists; **`/unref <path|all>`** removes. References are **saved with the chat** and restored by `/resume`.
+- The agent sees only the paths (host + `/mnt/c/...` sandbox form), no sizes or line counts.
+- Tools: **`reference_info`** (detect by content: text/PDF/image/archive/binary), **`read_reference`** (text: head by default; `query` to search, `offset`/`limit` to page, `all:true` only when truly needed), **`analyze_reference`** (run the analysis in a sub-agent so a large file never crowds the main context), **`view_reference`** (notes image viewability for text-only models).
+- **Read-only**: originals are never written. With `MICRODOT_SANDBOX_BWRAP=true` the `/mnt/c` mount is read-only; without it, that isn't enforced.
+- **Extraction is the agent's job**: for PDFs, images and archives it builds a tool with `create_tool` (e.g. `pdftotext`, OCR) and runs it in the sandbox. If it cannot extract a file, it says so rather than guessing.
+
 ## Tool sandbox backend
 Self-authored tools run **only** in an isolated **Linux worker** (WSL on Windows, native on Linux) — there is no in-process/host path on any platform. If the worker can't start, custom tools are **refused**. One worker script, two launchers:
 

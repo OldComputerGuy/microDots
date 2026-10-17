@@ -1,6 +1,6 @@
 // MicroDot tools for one agent: browser actions target the agent's own tab,
 // plain HTTP fetch, and self-authored custom tools.
-import { mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync } from 'node:fs';
+import { mkdirSync, writeFileSync, readdirSync, statSync, unlinkSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execFile } from 'node:child_process';
 import {
@@ -21,6 +21,25 @@ import { parallelSearch, parallelFetch } from './parallel.mjs';
 import { listSkills, readSkill, saveSkill, deleteSkill } from './skills.mjs';
 import { spaceDir, shotsDir } from './space.mjs';
 import { listWorkerTypes, readWorkerType, saveWorkerType, deleteWorkerType } from './worker-types.mjs';
+import { findReference, baseName } from './references.mjs';
+
+// ---- read-only reference helpers ----
+function detectFileType(buf) {
+  const head = (n) => buf.slice(0, n).toString('latin1');
+  if (buf.length >= 5 && head(5) === '%PDF-') return 'pdf';
+  if (buf.length >= 4 && head(4) === '\x89PNG') return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 6 && head(6).startsWith('GIF8')) return 'image/gif';
+  if (buf.length >= 12 && head(4) === 'RIFF' && buf.slice(8, 12).toString('latin1') === 'WEBP') return 'image/webp';
+  if (buf.length >= 4 && buf[0] === 0x50 && buf[1] === 0x4b && buf[2] === 0x03 && buf[3] === 0x04) return 'zip';
+  const sample = buf.slice(0, 8192);
+  if (sample.length && !sample.includes(0)) {
+    let printable = 0;
+    for (const b of sample) if (b === 9 || b === 10 || b === 13 || (b >= 32 && b !== 127) || b >= 128) printable++;
+    if (printable / sample.length > 0.9) return 'text';
+  }
+  return 'binary';
+}
 
 export function openPath(file) {
   try {
@@ -247,6 +266,71 @@ const BUILTINS = [
           overwrite: { type: 'boolean', description: 'Replace the tool in the target if it already exists' },
         },
         required: ['name', 'to'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'reference_info',
+      description:
+        'Inspect a user-supplied read-only reference file WITHOUT loading it into context: detects what it is from its bytes (text, PDF, image, archive, binary) and returns basic facts (bytes; a short text preview). Use this first, then decide whether to read it here or delegate.',
+      parameters: {
+        type: 'object',
+        properties: { path: { type: 'string', description: 'Registered reference path (host or sandbox form, or a unique file name)' } },
+        required: ['path'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'read_reference',
+      description:
+        'Read a registered read-only reference (plain text only). Defaults to a small head (a glance); use query to search with context, offset/limit to page, or all:true to read the whole file — do that only when you really need it. For non-text files, build a tool to extract them or use analyze_reference.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Registered reference path' },
+          query: { type: 'string', description: 'Search for this text and return matches with surrounding context' },
+          offset: { type: 'number', description: 'Character offset to start reading from (default 0)' },
+          limit: { type: 'number', description: 'Characters to return (default 8000 for a plain read)' },
+          all: { type: 'boolean', description: 'Return the whole file from offset — use only when truly needed' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'analyze_reference',
+      description:
+        'Analyse a registered reference in a SUB-AGENT (its own context), so a large file never crowds your main context. Give a focused question. The sub-agent reads/extracts the file and returns a digest. Discretionary: use it when the file is large or the analysis is self-contained.',
+      parameters: {
+        type: 'object',
+        properties: {
+          path: { type: 'string', description: 'Registered reference path' },
+          question: { type: 'string', description: 'What to find out / extract / summarise' },
+        },
+        required: ['path'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'view_reference',
+      description:
+        'For image/PDF references: report what it is and whether the current model can view it. Text-only models cannot see images, so this tells the agent to extract with a tool instead.',
+      parameters: {
+        type: 'object',
+        properties: { path: { type: 'string', description: 'Registered reference path' } },
+        required: ['path'],
         additionalProperties: false,
       },
     },
@@ -660,6 +744,88 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
           note: registered
             ? 'Copied and loaded — callable now in this session.'
             : `Copied. It will be available when project "${to}" is active (select it with /project).`,
+        };
+      }
+      case 'reference_info': {
+        const r = findReference(args?.path);
+        if (!r) throw new Error(`not a registered reference: ${args?.path}`);
+        const buf = readFileSync(r.host);
+        const type = detectFileType(buf);
+        const out = { path: r.host, sandbox: r.sandbox, bytes: buf.length, type };
+        if (type === 'text') {
+          const text = buf.toString('utf8');
+          out.chars = text.length;
+          out.preview = text.slice(0, 500);
+        }
+        return out;
+      }
+      case 'read_reference': {
+        const r = findReference(args?.path);
+        if (!r) throw new Error(`not a registered reference: ${args?.path}`);
+        const buf = readFileSync(r.host);
+        const type = detectFileType(buf);
+        if (type !== 'text') {
+          return {
+            path: r.host,
+            type,
+            note: 'Not a text file. Use reference_info, then build a tool with create_tool to extract it (e.g. pdftotext/OCR), or use analyze_reference to delegate.',
+          };
+        }
+        const text = buf.toString('utf8');
+        if (args?.query) {
+          const q = String(args.query);
+          const re = new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+          const results = [];
+          let m;
+          while ((m = re.exec(text)) && results.length < 20) {
+            const start = Math.max(0, m.index - 200);
+            const end = Math.min(text.length, m.index + q.length + 200);
+            results.push({ at: m.index, text: text.slice(start, end) });
+            if (re.lastIndex === m.index) re.lastIndex++;
+          }
+          return { path: r.host, type, total: text.length, query: q, matches: results.length, results };
+        }
+        const offset = Math.max(0, Number(args?.offset) || 0);
+        const all = args?.all === true;
+        const limit = all ? Math.max(0, text.length - offset) : Math.max(1, Number(args?.limit) || 8000);
+        const slice = text.slice(offset, offset + limit);
+        const done = offset + slice.length >= text.length;
+        return {
+          path: r.host,
+          type,
+          total: text.length,
+          offset,
+          returned: slice.length,
+          text: slice,
+          done,
+          note: done ? 'End of file.' : 'More content remains — continue with offset/limit, or delegate with analyze_reference.',
+        };
+      }
+      case 'analyze_reference': {
+        const r = findReference(args?.path);
+        if (!r) throw new Error(`not a registered reference: ${args?.path}`);
+        if (!delegate) throw new Error('sub-agents are disabled (MICRODOT_ALLOW_SPAWN=false)');
+        const question = String(args?.question || 'Read this file, report what it is, and extract the key points.').trim();
+        return await delegate({
+          name: `ref-${baseName(r.host)}`,
+          mission:
+            `Analyse a read-only reference file.\nHost path: ${r.host}\nSandbox path: ${r.sandbox}\nTask: ${question}\n` +
+            'Use reference_info/read_reference for text. For other formats (PDF, images, archives), create_tool to extract it (e.g. pdftotext/OCR) and run that. If extraction is impossible, say so.',
+          context: `The file is registered read-only at ${r.sandbox}.`,
+        });
+      }
+      case 'view_reference': {
+        const r = findReference(args?.path);
+        if (!r) throw new Error(`not a registered reference: ${args?.path}`);
+        const buf = readFileSync(r.host);
+        const type = detectFileType(buf);
+        return {
+          path: r.host,
+          type,
+          bytes: buf.length,
+          note: type.startsWith('image/')
+            ? 'This model is text-only and cannot see images. Extract text/artifacts with a custom tool (OCR), or switch to a vision-capable model.'
+            : 'view_reference is for images; use reference_info/read_reference, or extract with a tool.',
         };
       }
       case 'http_get': {
