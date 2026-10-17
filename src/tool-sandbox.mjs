@@ -6,9 +6,9 @@
 //   - Linux:   runs the same worker natively (optionally inside bubblewrap).
 import { spawn, spawnSync } from 'node:child_process';
 import { resolve } from 'node:path';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, existsSync } from 'node:fs';
 import { spaceDir } from './space.mjs';
-import { engineDir } from './home.mjs';
+import { engineDir, dataDir } from './home.mjs';
 
 const SENTINEL = '@@MICRODOT@@';
 const IS_WIN = process.platform === 'win32';
@@ -46,20 +46,31 @@ function useBwrap() {
   return ['1', 'true'].includes(String(process.env.MICRODOT_SANDBOX_BWRAP ?? '').toLowerCase()) && !bwrapFailed;
 }
 
-// bubblewrap args: whole system read-only, workspace writable, no shared pid/ipc/uts.
+// bubblewrap args: whole system read-only, workspace writable, and the things a
+// worker has no business reading hidden:
+//   - the data dir (.microdot: chats, every project's spaces/tools) is shadowed
+//     with a tmpfs, then only THIS worker's space is re-bound;
+//   - host-side secrets in the install dir (.env, the Chromium profile) are
+//     masked, so sandboxed code can't read API keys or browser sessions.
 function bwrapArgs(workspace, cwd) {
-  return [
+  const dataHost = dataDir();
+  const engineHost = engineDir();
+  const data = hostToSandboxPath(dataHost);
+  const engine = hostToSandboxPath(engineHost);
+  const args = [
     '--die-with-parent',
     '--unshare-pid',
     '--unshare-ipc',
     '--unshare-uts',
     '--ro-bind', '/', '/',
+    '--tmpfs', data,
     '--bind', workspace, workspace,
-    '--dev', '/dev',
-    '--proc', '/proc',
-    '--tmpfs', '/tmp',
-    '--chdir', cwd,
   ];
+  // Existence is checked on the HOST paths; the args use SANDBOX paths.
+  if (existsSync(resolve(engineHost, '.env'))) args.push('--ro-bind', '/dev/null', `${engine}/.env`);
+  if (existsSync(resolve(engineHost, '.chromium-profile'))) args.push('--tmpfs', `${engine}/.chromium-profile`);
+  args.push('--dev', '/dev', '--proc', '/proc', '--tmpfs', '/tmp', '--chdir', cwd);
+  return args;
 }
 
 // The workspace (space dir) currently bind-mounted read-write by bwrap, in

@@ -23,6 +23,11 @@ not a guarantee — see *Guidance vs enforcement* below.
 
 - **Generated code is jailed** — self-authored tools run only in the isolated
   Linux worker, cannot write outside their space, and cannot touch `tools/`.
+- **Read isolation (with bubblewrap)** — the data dir is shadowed in the sandbox:
+  a worker sees only **its own space**, not other projects' spaces, chats or tools,
+  and the install's `.env` and `.chromium-profile` are **masked** (no API keys or
+  browser sessions). Host files outside remain readable read-only (used for
+  references); only the worker's own space is writable.
 - **Hard caps** on agents / depth / concurrency, a **stop** key, and full
   **transcripts** (chats + offloaded tool outputs under `spaces/<agent>/notes/`).
 
