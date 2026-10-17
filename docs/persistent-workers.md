@@ -46,17 +46,29 @@ assign_worker({ name: ".nvda_analyst", task: "update on the latest earnings" }) 
 The .worker is the missing third row: same lifecycle class as `/new`, but
 agent-created and agent-driven.
 
+## How you use one
+
+A .worker is something you **consult**, on demand, repeatedly:
+
+1. **Ask** — the main agent sends a task or question (`assign_worker`).
+2. **Work** — the .worker runs in its own kept context (+ the project's tools), like a sub-agent run.
+3. **Report** — it returns a **sub-agent-style report** (summary + findings + artifacts/sources), written to its space (`report.md` / `report.json`) and handed back to the main agent.
+4. **Wait** — it goes idle, and is reloaded with its saved context on the next assignment.
+
+"Waiting" is **metaphorical**: there is no live process. Between assignments a .worker is just files on disk — it costs nothing until the next ask. So a .worker is a **consulted expert** as much as a standing owner: *ask → answer → idle → ask again*.
+
 ## Roles
 
-A .worker is a standing identity; *what it does* is set by its **worker type**. Three useful archetypes:
+A .worker is a standing identity; *what it does* is set by its **worker type**. Useful archetypes:
 
 - **Owner** — a domain specialist that accumulates knowledge and owns an ongoing objective (`.nvda_analyst`, `.market_scan`).
+- **Expert** — a standing specialist you consult on demand (`.tax_expert`, `.sec_expert`, `.doc_search`). Ask a question or assign a task; it answers and reports; it waits for the next one.
 - **Critic** — an independent reviewer with its own standards and memory, used to challenge the main agent's work (`.red_team`, `.editor`, `.skeptic`).
   - A **persistent critic** gives *consistent* review (it remembers prior critiques and standards).
   - For *truly independent* review, use a **fresh sub-agent** instead — a standing critic can anchor on its own past.
 - **Personality** — a consistent voice/character (tone, values, style) for repeated output (`.brand_editor`, `.optimist`). Several can form a panel (optimist + skeptic + editor).
 
-The same machinery serves all three: a name, a worker type (the persona/behaviour), a mission, and a kept context.
+The same machinery serves all of these: a name, a worker type (the persona/behaviour), a mission, and a kept context.
 
 ## When it makes sense to use a .worker
 
@@ -186,6 +198,7 @@ Standing entities grow without bound, so these ship **with** the feature, not af
 7. Human UX: `/workers` list/open/retire; do .workers show in `/resume`?
 8. Do .workers count toward depth, or sit outside the agent tree?
 9. Where does the "when to use a .worker" guidance live — a system-prompt line, a playbook skill, or both? How does the agent decide to *promote* a recurring sub-agent?
+10. Should a .worker's report reuse the exact **sub-agent digest schema** (`report.json`/`report.md` + artifacts), so the main agent handles sub-agent and .worker replies uniformly?
 
 ## Non-goals (for now)
 
