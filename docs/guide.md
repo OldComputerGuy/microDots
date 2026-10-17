@@ -172,7 +172,7 @@ Self-authored tools run **only** in an isolated **Linux worker** (WSL on Windows
 
 - **Windows:** the worker runs **inside WSL2** (spawned via `wsl.exe`). Requires Node in WSL: `wsl -- sudo apt-get install -y nodejs` (Node 18+ is enough).
 - **Linux/VPS:** the worker runs **natively** — no WSL.
-- **Confinement (`MICRODOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` - the system is mounted **read-only** and only the worker's space is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed. Network still works so `ctx.fetch` functions; reads of other paths remain, and Windows interop isn't fully closed. If `bubblewrap` is missing, MicroDot warns and **falls back to the unconfined worker**. The worker binds the active space read-write when it starts and **re-binds automatically when the active project/space changes** (e.g. a `/project` switch), so the new space stays writable.
+- **Confinement (`MICRODOT_SANDBOX_BWRAP=true`):** wrap the worker in `bubblewrap` - the system is mounted **read-only** and only the worker's space is writable (verified: writes to `/root` and `/etc` → `EROFS`). Needs `bubblewrap` installed. Network still works so `ctx.fetch` functions; reads of other paths remain. **Important — this is not a security boundary on Windows:** if **WSL interop** is enabled, a sandboxed tool can run `cmd.exe`/`powershell.exe`, which execute on the host **as you** and bypass the read-only mount entirely (MicroDot prints a one-time warning when it detects this). For a real boundary, run the worker in a **dedicated WSL distro with `[interop] enabled=false` and `[automount] enabled=false`** (no `/mnt/c`, no Windows binaries), or a container/VM — see [`safety.md`](safety.md). If `bubblewrap` is missing, MicroDot warns and **falls back to the unconfined worker**. The worker binds the active space read-write when it starts and **re-binds automatically when the active project/space changes** (e.g. a `/project` switch), so the new space stays writable.
 
 There is **no sandbox mode switch and no fallback**: custom tools are sandboxed on every platform. Worker start has a timeout (`MICRODOT_SANDBOX_START_TIMEOUT_MS`); if it expires, the tool is refused.
 
@@ -180,7 +180,7 @@ In the sandbox:
 - `ctx.fs` is jailed to the worker's space (`<project>/.microdot/spaces/<worker>/`); `ctx.fetch` runs natively in the worker; `ctx.browser.*` and `ctx.openPath` are **bridged back to the host** (shared Chromium / OS viewer).
 - Tools get `ctx.browser.{open,text,url,screenshot,click,type,scroll,close}` + `ctx.fs` instead of `page()`/`host`/`import()`.
 
-> With `bwrap` on, the system is read-only and only the space is writable; without it, WSL mode is functional-but-loose. Fully closing interop/reads needs a dedicated distro.
+> With `bwrap` on, the system is read-only and only the space is writable; **without it — and even with it, if WSL interop is enabled — the sandbox is not a security boundary.** Fully closing it needs a dedicated WSL distro (interop + automount off) or a container/VM; see [`safety.md`](safety.md).
 
 ## Sub-agents
 Sub-agents are **on by default**. A worker gets **`spawn_subagent({ mission, name?, type?, context?, deliverables? })`** and **`spawn_subagents({ tasks, concurrency? })`**: it designs tight, specialized missions and sub-agents run them autonomously — one at a time, or several **in parallel** (bounded by `MICRODOT_MAX_CONCURRENT`) — then report back. Disable with `MICRODOT_ALLOW_SPAWN=false`.

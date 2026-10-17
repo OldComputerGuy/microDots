@@ -29,6 +29,27 @@ not a guarantee — see *Guidance vs enforcement* below.
 Useful, but none of it bounds *what the browser and network can reach* or
 *whether a side-effecting action should happen at all*.
 
+## The sandbox is not a security boundary (WSL/Windows)
+
+`bubblewrap` (`MICRODOT_SANDBOX_BWRAP=true`) makes the worker's **view** read-only — but it does not cut **WSL interop**. A sandboxed tool can execute `/mnt/c/Windows/System32/cmd.exe` (or `powershell.exe`), and that runs on the **Windows host as you**, bypassing the read-only mount. Verified: `cmd.exe /c mkdir C:\…` succeeds from *inside* `bwrap`. MicroDot prints a one-time warning when it detects interop.
+
+For a boundary that actually holds, run the worker in a **dedicated WSL distro** with interop and automount off:
+
+```ini
+# that distro's /etc/wsl.conf
+[boot]
+systemd=true
+[interop]
+enabled=false
+appendWindowsPath=false
+[automount]
+enabled=false
+```
+
+Then `wsl --shutdown` and set `MICRODOT_WSL_DISTRO=<distro>`. There is now no `/mnt/c` and no Windows binaries, so the read-only mount is a real boundary. Read-only **references** still work — the CLI reads them **host-side**; the agent never reaches the host from the sandbox.
+
+Alternatives: a container/VM for the worker, or running MicroDot as an unprivileged user with no valuable host access (reduces blast radius only).
+
 ## Recommended guardrails
 
 Ordered cheap → strong. Effort is rough.

@@ -101,6 +101,29 @@ function normSandboxPath(p) {
   return IS_WIN ? s.toLowerCase() : s;
 }
 
+// One-time warning: WSL interop lets sandboxed tools run Windows binaries on the
+// host, so the read-only mount is NOT a security boundary.
+let warnedInterop = false;
+function maybeWarnInterop(interop) {
+  if (!interop || warnedInterop) return;
+  warnedInterop = true;
+  process.stderr.write(
+    '[sandbox] note: WSL interop is enabled — sandboxed tools can run Windows programs (cmd.exe/powershell.exe) on the host, which bypasses the read-only mount. The sandbox is NOT a security boundary. See docs/safety.md.\n',
+  );
+}
+// Probe from the HOST (works even under bwrap, whose fresh /proc hides binfmt_misc).
+function warnIfWslInterop() {
+  if (warnedInterop || !IS_WIN) return;
+  try {
+    const r = spawnSync('wsl.exe', ['-d', distro(), '--exec', '/bin/sh', '-c', 'test -e /proc/sys/fs/binfmt_misc/WSLInterop'], {
+      stdio: 'ignore',
+    });
+    if (r.status === 0) maybeWarnInterop(true);
+  } catch {
+    /* ignore */
+  }
+}
+
 let worker = null;
 let ready = null;
 let readyResolve = null;
@@ -139,6 +162,7 @@ function ensureWorker() {
 }
 
 function startWorker() {
+  warnIfWslInterop();
   const { cmd, args, bwrap } = workerCommand();
   const child = spawn(cmd, args, { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
   worker = child;
@@ -206,6 +230,7 @@ function handleLine(line, onReady) {
     return;
   }
   if (msg.type === 'ready') {
+    maybeWarnInterop(msg.interop);
     onReady?.();
     return;
   }

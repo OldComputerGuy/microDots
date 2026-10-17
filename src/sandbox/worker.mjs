@@ -45,8 +45,20 @@ function jail(root) {
     return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
   };
   const resolveIn = (p) => {
-    const abs = path.resolve(rootReal, String(p ?? '.'));
-    if (!inside(abs)) throw new Error(`path escapes the sandbox: ${p}`);
+    const raw = String(p ?? '.');
+    // Reject host-absolute path FORMS that Linux would otherwise treat as a
+    // relative filename ("C:\x", "C:/x", "\\server\share", "\x"). Without this
+    // they silently land inside the space and read as a false "ok".
+    if (/^[A-Za-z]:[\\/]/.test(raw) || /^\\\\/.test(raw) || raw.startsWith('\\')) {
+      throw new Error(
+        `refusing an absolute host path from the sandbox: "${raw}" — your filesystem is jailed to your space; use a path relative to it (to deliver outside, use a read-only reference, or ask the operator to mount it).`,
+      );
+    }
+    if (/[\u0000-\u001f]/.test(raw)) {
+      throw new Error(`invalid path (control character): ${JSON.stringify(raw)}`);
+    }
+    const abs = path.resolve(rootReal, raw);
+    if (!inside(abs)) throw new Error(`path escapes the sandbox: ${raw}`);
     let probe = fs.existsSync(abs) ? abs : path.dirname(abs);
     while (!fs.existsSync(probe)) {
       const up = path.dirname(probe);
@@ -204,4 +216,12 @@ rl.on('line', (line) => {
   }
 });
 
-send({ type: 'ready' });
+// Report whether Windows interop is reachable (WSL) — the host warns if so.
+function interopEnabled() {
+  try {
+    return fs.existsSync('/proc/sys/fs/binfmt_misc/WSLInterop');
+  } catch {
+    return false;
+  }
+}
+send({ type: 'ready', interop: interopEnabled() });
