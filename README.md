@@ -98,7 +98,7 @@ would have taken considerably longer without it. Thank you.
 - **[docs/guide.md](docs/guide.md)** — architecture, spaces & layers, tools, sub-agents, the sandbox, compaction, cleanup, and the full config reference.
 - **[docs/example-run.md](docs/example-run.md)** — a real, unedited run: search + browser + answer.
 - **[docs/safety.md](docs/safety.md)** — responsible-use recommendations (policy, egress, audit log, action gating).
-- **[docs/persistent-workers.md](docs/persistent-workers.md)** — design (not implemented): standing workers the agent spawns, with ongoing context.
+- **[docs/persistent-workers.md](docs/persistent-workers.md)** — design (not implemented): project-scoped, dot-named standing workers the agent spawns, with ongoing context.
 - **[ROADMAP.md](ROADMAP.md)** — where it's going; `good first issue`s are welcome.
 - **[CONTRIBUTING.md](CONTRIBUTING.md)** · **[SECURITY.md](SECURITY.md)** — how to help, and what to know before running untrusted inputs.
 - **[deploy/DEPLOY.md](deploy/DEPLOY.md)** — small-server deploy: systemd unit + timer, lean Chromium flags, resource caps.
