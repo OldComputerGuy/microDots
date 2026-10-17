@@ -46,6 +46,38 @@ assign_worker({ name: ".nvda_analyst", task: "update on the latest earnings" }) 
 The .worker is the missing third row: same lifecycle class as `/new`, but
 agent-created and agent-driven.
 
+## Roles
+
+A .worker is a standing identity; *what it does* is set by its **worker type**. Three useful archetypes:
+
+- **Owner** — a domain specialist that accumulates knowledge and owns an ongoing objective (`.nvda_analyst`, `.market_scan`).
+- **Critic** — an independent reviewer with its own standards and memory, used to challenge the main agent's work (`.red_team`, `.editor`, `.skeptic`).
+  - A **persistent critic** gives *consistent* review (it remembers prior critiques and standards).
+  - For *truly independent* review, use a **fresh sub-agent** instead — a standing critic can anchor on its own past.
+- **Personality** — a consistent voice/character (tone, values, style) for repeated output (`.brand_editor`, `.optimist`). Several can form a panel (optimist + skeptic + editor).
+
+The same machinery serves all three: a name, a worker type (the persona/behaviour), a mission, and a kept context.
+
+## When it makes sense to use a .worker
+
+The system should decide this **per task, conservatively**. Create a .worker only when several of these hold:
+
+1. **Recurrence** — the task/domain will come up again.
+2. **Continuity** — remembering prior work changes the outcome (not just repeating it).
+3. **Identity** — a distinct, consistent voice/perspective is wanted (personalities, critics).
+4. **Independence** — a viewpoint separate from the main agent's context is valuable (critics).
+5. **Worth a standing entity** — the value exceeds the cost (growing context, compaction, GC).
+
+If none hold → use a **sub-agent** (one-off, parallel, throwaway) or just do it inline.
+
+**Default is ephemeral.** Mint .workers deliberately, and retire them when the domain goes cold. The guidance for this ("when to spawn a .worker") should live *somewhere the model reads it* — a line in the system prompt and/or a playbook skill — not be implied.
+
+## Lifecycle: promote / demote / retire
+
+- **Promote** — if a one-off sub-agent's work keeps recurring, turn it into a .worker, carrying its findings into the new .worker's starting context. (ephemeral → standing)
+- **Retire** — archive a .worker when its domain is done (`retire_worker`), reversible. (standing → archived)
+- This is what keeps standing entities from piling up (the same concern the tool-GC guards against).
+
 ## Scoping & naming
 
 - **Project-scoped.** A .worker belongs to a project and lives inside it. It is
@@ -153,6 +185,7 @@ Standing entities grow without bound, so these ship **with** the feature, not af
 6. Cost controls: per-.worker turn/step budgets? Idle retirement after N days?
 7. Human UX: `/workers` list/open/retire; do .workers show in `/resume`?
 8. Do .workers count toward depth, or sit outside the agent tree?
+9. Where does the "when to use a .worker" guidance live — a system-prompt line, a playbook skill, or both? How does the agent decide to *promote* a recurring sub-agent?
 
 ## Non-goals (for now)
 
