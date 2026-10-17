@@ -148,6 +148,15 @@ Point the agent at a file without loading it into context — it decides how muc
 - **Read-only**: originals are never written. With `MICRODOT_SANDBOX_BWRAP=true` the `/mnt/c` mount is read-only; without it, that isn't enforced.
 - **Extraction is the agent's job**: for PDFs, images and archives it builds a tool with `create_tool` (e.g. `pdftotext`, OCR) and runs it in the sandbox. If it cannot extract a file, it says so rather than guessing.
 
+## Tool garbage collection
+
+Occasionally the agent reviews the tools **it built** and asks itself: *is this temporary? an old version? broken? still needed?* Doubtful tools go to a **reversible trash** — unsure → trash, never delete.
+
+- **`/gc`** — inventory the tools (`gc_scan`), have the model decide keep / park / **trash** with a one-line reason, then apply and reload the tool list. It also runs automatically at end of run when there are obvious candidates (probe/`tmp_`/`dbg_`/parked/`experiment`/`deprecated`), unless `MICRODOT_GC=false`.
+- **`/trash`** — list trashed tools; **`/trash restore <name>`** puts one back; **`/trash empty`** clears the trash. Nothing is auto-deleted.
+- **Naming convention** (chosen by the model at `create_tool` time): `dbg_`/`tmp_` for throwaway tools, `_name` to **park** (kept on disk, not loaded), `name_v2` for iterations, and an optional **`status`** (`experiment` / `stable` / `deprecated`) stored as `// meta:` in the tool file.
+- **Scope**: only agent-authored tools in the project/root layers — built-ins and the shipped `tools-custom/` are never touched.
+
 ## Tool sandbox backend
 Self-authored tools run **only** in an isolated **Linux worker** (WSL on Windows, native on Linux) — there is no in-process/host path on any platform. If the worker can't start, custom tools are **refused**. One worker script, two launchers:
 
@@ -231,6 +240,7 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_MAX_CONCURRENT` | `8` | max sub-agents running at once |
 | `MICRODOT_DEBUG` | `false` | keep sub-agent spaces + verbose logs |
 | `MICRODOT_DEBUG_INPUT` | `false` | log each raw input chunk (terminal / key debugging) |
+| `MICRODOT_GC` | `true` | review/trash temporary tools at end of run when candidates exist |
 | `PARALLEL_API_KEY` | — | optional Parallel search key (alias: `PARALLEL_KEY`) |
 | `MICRODOT_SEARCH_MAX` | `0` | cap `web_search` calls per session (0 = unlimited); guards Parallel cost |
 | `MICRODOT_SANDBOX_DIR` | - | explicit sandbox root override |

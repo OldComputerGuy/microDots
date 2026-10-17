@@ -21,6 +21,7 @@ import { ensureProject } from './home.mjs';
 import { sweepOrphanTabs, stopChromiumIfIdle } from './tabs.mjs';
 import { bold, dim, cyan, yellow, green, magenta, blue, red, gray } from './theme.mjs';
 import { addReference, removeReference, setReferences, listReferences, referencePaths } from './references.mjs';
+import { listTrash, restoreTrash, emptyTrash } from './gc.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -104,6 +105,8 @@ const COMMANDS = [
   { name: '/project', help: 'show/load/delete a project (/ = root)' },
   { name: '/resume', help: 'list or resume a chat' },
   { name: '/name', help: "set this chat's title" },
+  { name: '/gc', help: 'review and clean up the tools you built (reversible trash)' },
+  { name: '/trash', help: 'list / restore / empty trashed tools' },
   { name: '/ref', help: 'add a read-only file reference' },
   { name: '/refs', help: 'list reference files' },
   { name: '/unref', help: 'remove a reference' },
@@ -225,6 +228,8 @@ function help() {
   console.log(dim('  (type / for a command menu — Up/Down or Tab fill the line, Enter runs it)'));
   console.log(dim('  (Up/Down (no menu) recall previous inputs — commands included)'));
   console.log(dim('  (Esc stops a running turn · while it runs, Ctrl-C again stops; idle Ctrl-C is ignored)'));
+  console.log(dim('  /gc           review your tool set; trashes temporary/old/broken tools (reversible)'));
+  console.log(dim('  /trash        list trashed tools; /trash restore <name> | /trash empty'));
   console.log(dim('  /ref <path>   add a read-only file reference (or drop a file into the prompt)'));
   console.log(dim('  /refs         list reference files; /unref <path|all> removes one'));
   console.log(dim('  /tools        list built-in and custom tools (with descriptions)'));
@@ -320,9 +325,20 @@ async function main() {
 
   // Full agent shutdown: release the tab, stop the shared browser if we were the
   // last agent, and clean scratch (sub-agents, screenshots) unless kept.
-  async function cleanup() {
+  async function cleanup({ gc = true } = {}) {
     busy.stop();
     autosave({ onlyIfUsed: true });
+    // Occasionally review the tools at end of run — only when there are obvious
+    // candidates (probe/tmp/dbg/parked/experiment/deprecated), so a normal exit
+    // costs nothing. Never block shutdown on it.
+    if (gc && (process.env.MICRODOT_GC ?? 'true') !== 'false') {
+      try {
+        const r = await runToolGc({ quiet: true });
+        if (r) console.log(dim(`tool gc: reviewed ${r.reviewed} tool(s); trash holds ${r.trashed}`));
+      } catch {
+        /* ignore */
+      }
+    }
     cleanupSubagents();
     if ((process.env.MICRODOT_PRUNE_NOTES ?? 'true') !== 'false') {
       pruneNotes(agentName, {
@@ -353,7 +369,7 @@ async function main() {
     const now = Date.now();
     if (now - lastInterrupt < EXIT_MS) {
       console.log(dim('\n(exiting)'));
-      cleanup().finally(() => process.exit(0));
+      cleanup({ gc: false }).finally(() => process.exit(0));
       return;
     }
     lastInterrupt = now;
@@ -414,6 +430,77 @@ async function main() {
     } catch (e) {
       console.log(red(`  ${e.message}`));
     }
+  }
+
+  // Ask the model to review the tools it built and clean up the set. Trash is
+  // reversible; unsure → trash. `quiet` skips obvious-noise-free sessions and
+  // suppresses the spinner (used at end of run).
+  async function runToolGc({ quiet = false } = {}) {
+    const inv = await tools.execute('gc_scan', {});
+    if (!inv.tools.length) return null;
+    const candidates = inv.tools.filter(
+      (t) => t.parked || /^(dbg_|tmp_|prb_)/i.test(t.name) || ['experiment', 'deprecated'].includes(t.status),
+    );
+    if (quiet && !candidates.length) return null;
+    const brief = inv.tools.map(({ name, project, description, status, parked, ageDays, bytes }) => ({
+      name,
+      project,
+      description,
+      status: status || undefined,
+      parked,
+      ageDays,
+      bytes,
+    }));
+    const reviewTools = {
+      definitions: tools.definitions.filter((d) => ['gc_scan', 'trash_tool', 'park_tool'].includes(d.function?.name)),
+      execute: (name, a) => tools.execute(name, a),
+    };
+    if (!quiet) busy.start('gc: reviewing tools');
+    let answer = '';
+    try {
+      answer = await runAgent({
+        messages: [
+          {
+            role: 'system',
+            content:
+              "You maintain MicroDot's custom tool set. Use gc_scan, trash_tool and park_tool only. Be conservative: trash rather than guess, and always give a short reason.",
+          },
+          {
+            role: 'user',
+            content:
+              'Review these custom tools and clean up the set.\n' +
+              'Keep tools that are useful, working and not superseded. Trash tools that are temporary, probes/debug, broken, or old versions superseded by a newer working tool. If unsure, trash it (the trash is reversible). Never touch built-ins or shipped tools — only the listed ones. Call trash_tool or park_tool with a reason, then reply with a one-line summary per tool.\n\n' +
+              JSON.stringify(brief, null, 2),
+          },
+        ],
+        tools: reviewTools,
+        model,
+        apiKey,
+        baseUrl,
+        textLimit,
+        maxSteps: 8,
+        onToken: () => {},
+        onTool: quiet
+          ? undefined
+          : (kind, name) => {
+              if (kind === 'call') busy.set(`gc: ${name}`);
+            },
+      });
+    } finally {
+      if (!quiet) busy.stop();
+    }
+    await reloadTools();
+    return { answer, reviewed: inv.tools.length, trashed: listTrash().length };
+  }
+
+  // Rebuild the live tool list (after GC trashes/parks or restores a tool).
+  async function reloadTools() {
+    tools = await createTools({
+      host,
+      agentId: agentName,
+      textLimit,
+      delegate: allowSpawn ? makeDelegate({ parentSpace: spacePath, depth: 0 }) : undefined,
+    });
   }
 
   // Switch the active project and re-init the session for it. `null` means the
@@ -552,6 +639,48 @@ async function main() {
       const type = parts[1] || 'default'; // no type stated -> default
       const spawned = spawnAgentTerminal(given, type);
       console.log(dim(`opened a new MicroDot CLI window (agent "${spawned}", worker type "${type}") — shares the same Chromium`));
+      continue;
+    }
+    if (line === '/gc') {
+      let r;
+      try {
+        r = await runToolGc();
+      } catch (e) {
+        console.log(red(`  gc failed: ${e?.message ?? e}`));
+        continue;
+      }
+      if (!r) {
+        console.log(dim('no custom tools to review'));
+        continue;
+      }
+      if (r.answer && r.answer.trim()) console.log(r.answer.trim());
+      console.log(dim(`trash holds ${r.trashed} tool(s) — /trash to review, /trash restore <name> to undo`));
+      continue;
+    }
+    if (line === '/trash') {
+      const list = listTrash();
+      if (!list.length) console.log(dim('trash is empty'));
+      else {
+        console.log(cyan('trashed tools:'));
+        for (const e of list) console.log(`  ${green(e.name)}  ${dim(`${e.project} · ${e.reason || 'no reason'} · ${e.at}`)}`);
+        console.log(dim('restore: /trash restore <name>   empty: /trash empty'));
+      }
+      continue;
+    }
+    if (line === '/trash empty') {
+      const r = emptyTrash();
+      console.log(dim(`emptied trash (${r.emptied} file(s))`));
+      continue;
+    }
+    if (line.startsWith('/trash restore ')) {
+      const key = line.slice(15).trim();
+      try {
+        const r = restoreTrash(key);
+        await reloadTools();
+        console.log(dim(`restored ${r.restored} → ${r.to}`));
+      } catch (e) {
+        console.log(red(`  ${e.message}`));
+      }
       continue;
     }
     if (line === '/ref' || line.startsWith('/ref ')) {

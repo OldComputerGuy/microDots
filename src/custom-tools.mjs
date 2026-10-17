@@ -54,15 +54,17 @@ export function scanToolCode(code) {
   return RISK_PATTERNS.filter(([, re]) => re.test(s)).map(([label]) => label);
 }
 
-function sourceFor({ name, description, parameters, code }) {
+function sourceFor({ name, description, parameters, code, status }) {
   const definition = { type: 'function', function: { name, description, parameters } };
-  return [
+  const lines = [
     `// MicroDot custom tool "${name}" - auto-generated, safe to edit or delete.`,
     `// The code below runs ONLY in the isolated Linux sandbox worker (WSL on Windows).`,
-    `export const definition = ${JSON.stringify(definition, null, 2)};`,
-    `export const code = ${JSON.stringify(code)};`,
-    ``,
-  ].join('\n');
+  ];
+  if (status) lines.push(`// meta: ${JSON.stringify({ status })}`);
+  lines.push(`export const definition = ${JSON.stringify(definition, null, 2)};`);
+  lines.push(`export const code = ${JSON.stringify(code)};`);
+  lines.push('');
+  return lines.join('\n');
 }
 
 export function saveTool(spec, dir = customDir()) {

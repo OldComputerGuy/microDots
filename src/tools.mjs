@@ -22,6 +22,7 @@ import { listSkills, readSkill, saveSkill, deleteSkill } from './skills.mjs';
 import { spaceDir, shotsDir } from './space.mjs';
 import { listWorkerTypes, readWorkerType, saveWorkerType, deleteWorkerType } from './worker-types.mjs';
 import { findReference, baseName } from './references.mjs';
+import { inventory, trashTool, parkTool } from './gc.mjs';
 
 // ---- read-only reference helpers ----
 function detectFileType(buf) {
@@ -213,7 +214,7 @@ const BUILTINS = [
     function: {
       name: 'create_tool',
       description:
-        'Create a new tool for yourself. Provide a name, a description, a JSON-Schema `parameters` object, and the JavaScript body of `async function run(args, ctx)`. `return` a JSON-serialisable result. Available at once and saved to ./tools-custom/ for future sessions. The code runs in an isolated Linux worker (WSL on Windows, native on Linux) with ctx.agentId, ctx.fetch(url,opts), ctx.log(...), ctx.fs (a filesystem jailed to the sandbox folder), and ctx.browser.{open,text,url,screenshot,click,type,scroll,close} (bridged to the host browser).',
+        'Create a new tool for yourself. Provide a name, a description, a JSON-Schema `parameters` object, and the JavaScript body of `async function run(args, ctx)`. `return` a JSON-serialisable result. Available at once and saved to ./tools-custom/ for future sessions. The code runs in an isolated Linux worker (WSL on Windows, native on Linux) with ctx.agentId, ctx.fetch(url,opts), ctx.log(...), ctx.fs (a filesystem jailed to the sandbox folder), and ctx.browser.{open,text,url,screenshot,click,type,scroll,close} (bridged to the host browser). NAMING (helps tool clean-up): prefix throwaway probes with `dbg_`/`tmp_`, use `name_v2` for iterations, and prefix `_` to park a tool; optionally set `status`.',
       parameters: {
         type: 'object',
         properties: {
@@ -224,6 +225,11 @@ const BUILTINS = [
             description: 'JSON Schema for the arguments, e.g. { type:"object", properties:{...}, required:[...] }',
           },
           code: { type: 'string', description: 'Body of `async function run(args, ctx)`, ending in `return`' },
+          status: {
+            type: 'string',
+            enum: ['experiment', 'stable', 'deprecated'],
+            description: 'Optional lifecycle hint for tool clean-up (experiment/stable/deprecated)',
+          },
         },
         required: ['name', 'description', 'parameters', 'code'],
         additionalProperties: false,
@@ -331,6 +337,46 @@ const BUILTINS = [
         type: 'object',
         properties: { path: { type: 'string', description: 'Registered reference path' } },
         required: ['path'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'gc_scan',
+      description:
+        'List the custom tools YOU have built (name, project, description, status, age, parked), across the root and every project. Use this before reviewing/cleaning up your tool set.',
+      parameters: { type: 'object', properties: {}, additionalProperties: false },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'trash_tool',
+      description:
+        'Move one of your custom tools to the TRASH (reversible; not a delete). Use it for temporary/probe/debug tools, broken tools, and old versions superseded by a newer working one. If you are unsure, trash it — it can be restored.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Tool name exactly as listed by gc_scan' },
+          reason: { type: 'string', description: 'Short reason (e.g. "probe", "broken", "superseded by X")' },
+        },
+        required: ['name'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'park_tool',
+      description:
+        'Park a custom tool (disable without deleting): renames it with a leading "_" so it no longer loads. Use for tools you want to keep on disk but out of the list.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'Tool name exactly as listed by gc_scan' } },
+        required: ['name'],
         additionalProperties: false,
       },
     },
@@ -600,6 +646,7 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
       description: String(args.description),
       parameters,
       code: args.code,
+      status: ['experiment', 'stable', 'deprecated'].includes(String(args?.status)) ? String(args.status) : '',
     });
     const definition = await registerTool(name);
 
@@ -827,6 +874,19 @@ export async function createTools({ host, agentId, textLimit = 32768, space, del
             ? 'This model is text-only and cannot see images. Extract text/artifacts with a custom tool (OCR), or switch to a vision-capable model.'
             : 'view_reference is for images; use reference_info/read_reference, or extract with a tool.',
         };
+      }
+      case 'gc_scan': {
+        return { tools: await inventory() };
+      }
+      case 'trash_tool': {
+        const name = String(args?.name ?? '').trim();
+        if (!name) throw new Error('"name" is required');
+        return await trashTool(name, args?.reason);
+      }
+      case 'park_tool': {
+        const name = String(args?.name ?? '').trim();
+        if (!name) throw new Error('"name" is required');
+        return await parkTool(name);
       }
       case 'http_get': {
         const res = await fetch(args.url, {
