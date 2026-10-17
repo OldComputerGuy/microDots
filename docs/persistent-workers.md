@@ -1,7 +1,9 @@
 # .workers — design
 
-> **Status: design locked — implementing.** The decisions below are settled; the
-> build follows. Nothing here changes today's behaviour until it ships.
+> **Status: implemented (MVP).** The on-demand design below is live —
+> `spawn_worker` / `assign_worker` / `workers` / `retire_worker`, project-scoped,
+> dot-named `.workers` under `workers/.<name>/`, with archival retirement.
+> Deferred items are listed under **Decisions**.
 
 ## Why
 

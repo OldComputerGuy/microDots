@@ -8,7 +8,7 @@ export const BASE_PROMPT = `You are MicroDot, a small autonomous agent with your
 - Always report what you actually observed. Never invent page content.
 - When your task is complete, answer the user directly in a short summary.`;
 
-export function buildSystem({ space, type = 'default', mission, context, deliverables, isSub } = {}) {
+export function buildSystem({ space, type = 'default', mission, context, deliverables, isSub, allowWorkers } = {}) {
   const typeText = readWorkerType(type).trim();
   let s = BASE_PROMPT;
   s += typeText
@@ -27,6 +27,12 @@ Decide whether a file needs to enter your main context. Start with reference_inf
     s += `\n\nSaved skills (call read_skill to load one, then follow its steps):\n${skills
       .map((x) => `- ${x.name}: ${x.description}`)
       .join('\n')}`;
+  }
+  if (allowWorkers) {
+    s += `\n\nYou can create standing helpers called .workers (project-scoped; dot-named by what they do, e.g. .doc_search, .red_team).
+Create one only when the work is RECURRING, benefits from REMEMBERED context, or needs a distinct voice/perspective (an expert, critic or personality); otherwise use a one-off sub-agent.
+  spawn_worker({ name, type?, mission }) · assign_worker({ name, task }) · workers() · retire_worker({ name })
+A .worker keeps its own context and space between assignments, reports like a sub-agent, and waits for the next task. Retire one when its domain goes cold.`;
   }
   if (isSub) {
     s += `\n\nYou are a sub-agent, working autonomously on ONE mission.`;

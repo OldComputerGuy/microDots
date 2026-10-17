@@ -22,6 +22,7 @@ import { sweepOrphanTabs, stopChromiumIfIdle } from './tabs.mjs';
 import { bold, dim, cyan, yellow, green, magenta, blue, red, gray } from './theme.mjs';
 import { addReference, removeReference, setReferences, listReferences, referencePaths } from './references.mjs';
 import { listTrash, restoreTrash, emptyTrash } from './gc.mjs';
+import { listWorkerRecords, readWorker, writeWorker, spawnWorker, retireWorker, workerSpace, maxWorkers } from './workers.mjs';
 
 const apiKey = process.env.OPENROUTER_API_KEY || process.env.OpenRouterKey;
 const baseUrl = process.env.OPENROUTER_BASE_URL ?? 'https://openrouter.ai/api/v1';
@@ -94,7 +95,7 @@ let mission = readMission(agentName).trim();
 let workerType = (process.env.MICRODOT_WORKER_TYPE || '').trim() || getSpaceType(agentName) || 'default';
 setSpaceType(agentName, workerType);
 
-let SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
+let SYSTEM = buildSystem({ space: spacePath, type: workerType, mission, allowWorkers: true });
 
 // Paste-aware input: a pasted block fills the prompt and does NOT submit —
 // press Enter to run it. (Bracketed paste; raw mode.)
@@ -105,6 +106,7 @@ const COMMANDS = [
   { name: '/project', help: 'show/load/delete a project (/ = root)' },
   { name: '/resume', help: 'list or resume a chat' },
   { name: '/name', help: "set this chat's title" },
+  { name: '/workers', help: 'list or retire .workers (standing helpers)' },
   { name: '/gc', help: 'review and clean up the tools you built (reversible trash)' },
   { name: '/trash', help: 'list / restore / empty trashed tools' },
   { name: '/ref', help: 'add a read-only file reference' },
@@ -228,6 +230,7 @@ function help() {
   console.log(dim('  (type / for a command menu — Up/Down or Tab fill the line, Enter runs it)'));
   console.log(dim('  (Up/Down (no menu) recall previous inputs — commands included)'));
   console.log(dim('  (Esc stops a running turn · while it runs, Ctrl-C again stops; idle Ctrl-C is ignored)'));
+  console.log(dim('  /workers      list standing .workers; /workers retire <name>'));
   console.log(dim('  /gc           review your tool set; trashes temporary/old/broken tools (reversible)'));
   console.log(dim('  /trash        list trashed tools; /trash restore <name> | /trash empty'));
   console.log(dim('  /ref <path>   add a read-only file reference (or drop a file into the prompt)'));
@@ -302,11 +305,114 @@ async function main() {
     },
   });
 
+  // ---- .workers: standing, project-scoped helpers -------------------------
+  // A .worker is reloaded with its kept context, runs like a sub-agent in its
+  // own space (own tab), reports, then waits. Storage is in src/workers.mjs.
+  const WORKER_SUFFIX =
+    '\n\nYou are a standing .worker. Keep your working files in your space. When you finish a task, write report.md (readable) and report.json ({ summary, findings: [..], sources: [{title,url}], artifacts: [..] }) in your space, then reply with a concise report. You will be given more tasks later; your context is kept between assignments.';
+  async function runWorkerTask(name, task) {
+    const w = readWorker(name);
+    const space = workerSpace(name);
+    const wh = await createBrowserHost({ headless, isolate, agentId: name });
+    await wh.getPage().catch(() => {});
+    const wtools = await createTools({
+      host: wh,
+      agentId: name,
+      textLimit,
+      space,
+      delegate: allowSpawn ? makeDelegate({ parentSpace: space, depth: 0 }) : undefined,
+    });
+    const sys = buildSystem({ space, type: w.type, mission: w.mission }) + WORKER_SUFFIX;
+    const prior = (w.messages || []).filter((m) => m.role !== 'system');
+    const messages = [
+      { role: 'system', content: sys },
+      ...prior,
+      { role: 'user', content: String(task ?? '').trim() || 'Continue.' },
+    ];
+    let text = '';
+    try {
+      text = await runAgent({
+        messages,
+        tools: wtools,
+        model,
+        apiKey,
+        baseUrl,
+        textLimit,
+        maxSteps,
+        onToken: () => {},
+        compact: compactFor(space, 0),
+      });
+    } finally {
+      await wh.closeTab().catch(() => {});
+      await wh.close().catch(() => {});
+    }
+    w.messages = messages;
+    writeWorker(w);
+    let report = null;
+    try {
+      report = JSON.parse(readFileSync(resolve(space, 'report.json'), 'utf8'));
+    } catch {
+      /* none written */
+    }
+    const rel = (p) => p.replace(process.cwd(), '.').replace(/\\/g, '/');
+    return {
+      worker: name,
+      status: 'done',
+      summary: report?.summary || (typeof text === 'string' ? text.slice(0, 800) : ''),
+      findings: report?.findings || [],
+      sources: report?.sources || [],
+      artifacts: report?.artifacts || [],
+      report_path: existsSync(resolve(space, 'report.md')) ? rel(resolve(space, 'report.md')) : null,
+      reply: typeof text === 'string' ? text : '',
+    };
+  }
+  const workerHostTools = [
+    {
+      name: 'spawn_worker',
+      description:
+        'Create a standing, project-scoped .worker — a dot-named helper (e.g. ".doc_search", ".red_team"). Use one ONLY when the work is recurring, benefits from remembered context, or needs a distinct voice/perspective (expert, critic, personality); otherwise use a one-off sub-agent.',
+      parameters: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', description: 'Worker name, dot-prefixed by function (e.g. ".doc_search")' },
+          type: { type: 'string', description: 'Worker type (default "default")' },
+          mission: { type: 'string', description: 'What this .worker owns / is for' },
+        },
+        required: ['name', 'mission'],
+      },
+      run: async (args) => spawnWorker({ name: args?.name, type: args?.type, mission: args?.mission }),
+    },
+    {
+      name: 'assign_worker',
+      description:
+        'Give a task or question to a .worker. It runs with its kept context and space, writes a report, and returns it. It then waits for the next assignment. Use `workers` to list them.',
+      parameters: {
+        type: 'object',
+        properties: { name: { type: 'string', description: 'The .worker name' }, task: { type: 'string', description: 'The task or question' } },
+        required: ['name', 'task'],
+      },
+      run: async (args) => runWorkerTask(args?.name, args?.task),
+    },
+    {
+      name: 'workers',
+      description: 'List the standing .workers in this project (name, type, mission, last activity).',
+      parameters: { type: 'object', properties: {} },
+      run: async () => ({ workers: listWorkerRecords(), limit: maxWorkers() }),
+    },
+    {
+      name: 'retire_worker',
+      description: 'Retire a .worker that is no longer needed (archived, reversible — not deleted).',
+      parameters: { type: 'object', properties: { name: { type: 'string', description: 'The .worker name' } }, required: ['name'] },
+      run: async (args) => retireWorker(args?.name),
+    },
+  ];
+
   let tools = await createTools({
     host,
     agentId: agentName,
     textLimit,
     delegate: allowSpawn ? makeDelegate({ parentSpace: spacePath, depth: 0 }) : undefined,
+    hostTools: workerHostTools,
   });
   pruneScreenshots(Number(process.env.MICRODOT_SHOT_KEEP ?? 10) || 10, shotsDir(agentName));
 
@@ -404,7 +510,7 @@ async function main() {
       chat.title = c.title || '';
       chat.refs = Array.isArray(c.refs) ? c.refs : [];
       setReferences(chat.refs);
-      SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
+      SYSTEM = buildSystem({ space: spacePath, type: workerType, mission, allowWorkers: true });
       messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
       console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
       renderHistory(messages);
@@ -415,7 +521,7 @@ async function main() {
 
   // Rebuild the system prompt (e.g. after the reference list changes).
   function refreshSystem() {
-    SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
+    SYSTEM = buildSystem({ space: spacePath, type: workerType, mission, allowWorkers: true });
     messages[0] = { role: 'system', content: SYSTEM };
   }
   function addRefToChat(p) {
@@ -500,6 +606,7 @@ async function main() {
       agentId: agentName,
       textLimit,
       delegate: allowSpawn ? makeDelegate({ parentSpace: spacePath, depth: 0 }) : undefined,
+      hostTools: workerHostTools,
     });
   }
 
@@ -517,12 +624,13 @@ async function main() {
     setSpaceType(agentName, workerType);
     chat.refs = [];
     setReferences([]);
-    SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
+    SYSTEM = buildSystem({ space: spacePath, type: workerType, mission, allowWorkers: true });
     tools = await createTools({
       host,
       agentId: agentName,
       textLimit,
       delegate: allowSpawn ? makeDelegate({ parentSpace: spacePath, depth: 0 }) : undefined,
+      hostTools: workerHostTools,
     });
     chat.space = `spaces/${agentName}`;
     chat.id = newChatId();
@@ -537,7 +645,7 @@ async function main() {
         chat.title = c.title || '';
         chat.refs = Array.isArray(c.refs) ? c.refs : [];
         setReferences(chat.refs);
-        SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
+        SYSTEM = buildSystem({ space: spacePath, type: workerType, mission, allowWorkers: true });
         messages = [{ role: 'system', content: SYSTEM }, ...(c.messages || []).slice(1)];
         console.log(dim(`resumed "${c.title || c.id}" (${messages.length - 1} messages)`));
         renderHistory(messages);
@@ -639,6 +747,28 @@ async function main() {
       const type = parts[1] || 'default'; // no type stated -> default
       const spawned = spawnAgentTerminal(given, type);
       console.log(dim(`opened a new MicroDot CLI window (agent "${spawned}", worker type "${type}") — shares the same Chromium`));
+      continue;
+    }
+    if (line === '/workers') {
+      const list = listWorkerRecords();
+      if (!list.length) console.log(dim('no .workers — the agent creates them with spawn_worker when work recurs'));
+      else {
+        console.log(cyan(`.workers (${list.length}/${maxWorkers()}):`));
+        for (const w of list) {
+          console.log(`  ${green(w.name)} ${dim(`[${w.type}] · ${w.messages} msg · ${new Date(w.updatedAt || 0).toLocaleString()}`)}  ${w.mission || ''}`);
+        }
+        console.log(dim('retire: /workers retire <name>'));
+      }
+      continue;
+    }
+    if (line.startsWith('/workers retire ')) {
+      const n = line.slice(16).trim();
+      try {
+        const r = retireWorker(n);
+        console.log(dim(`retired ${r.retired} → ${r.archived}`));
+      } catch (e) {
+        console.log(red(`  ${e.message}`));
+      }
       continue;
     }
     if (line === '/gc') {
@@ -761,12 +891,12 @@ async function main() {
       } else if (text === '/') {
         const file = resetMission(agentName);
         mission = readMission(agentName).trim();
-        messages[0] = { role: 'system', content: buildSystem({ space: spacePath, type: workerType, mission }) };
+        messages[0] = { role: 'system', content: buildSystem({ space: spacePath, type: workerType, mission, allowWorkers: true }) };
         console.log(dim(`mission reset to the root mission: ${file}`));
       } else {
         const file = writeMission(agentName, text);
         mission = text;
-        messages[0] = { role: 'system', content: buildSystem({ space: spacePath, type: workerType, mission: text }) };
+        messages[0] = { role: 'system', content: buildSystem({ space: spacePath, type: workerType, mission: text, allowWorkers: true }) };
         console.log(dim(`mission updated: ${file}`));
       }
       continue;
@@ -790,7 +920,7 @@ async function main() {
         setSpaceType(agentName, name);
         messages[0] = {
           role: 'system',
-          content: buildSystem({ space: spacePath, type: name, mission: readMission(agentName).trim() }),
+          content: buildSystem({ space: spacePath, type: name, mission: readMission(agentName).trim(), allowWorkers: true }),
         };
         console.log(dim(`worker type set to "${name}"`));
       }
@@ -965,7 +1095,7 @@ async function main() {
       chat.createdAt = Date.now();
       chat.refs = [];
       setReferences([]);
-      SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
+      SYSTEM = buildSystem({ space: spacePath, type: workerType, mission, allowWorkers: true });
       messages = [{ role: 'system', content: SYSTEM }];
       clearScreen();
       console.log(dim('cleared the context and the screen (previous chat saved — /resume to reopen)'));
@@ -978,7 +1108,7 @@ async function main() {
       chat.createdAt = Date.now();
       chat.refs = [];
       setReferences([]);
-      SYSTEM = buildSystem({ space: spacePath, type: workerType, mission });
+      SYSTEM = buildSystem({ space: spacePath, type: workerType, mission, allowWorkers: true });
       messages = [{ role: 'system', content: SYSTEM }];
       console.log(dim('started a new conversation (previous chat saved — /resume to reopen)'));
       continue;

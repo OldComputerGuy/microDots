@@ -148,9 +148,19 @@ Point the agent at a file without loading it into context — it decides how muc
 - **Read-only**: originals are never written. With `MICRODOT_SANDBOX_BWRAP=true` the `/mnt/c` mount is read-only; without it, that isn't enforced.
 - **Extraction is the agent's job**: for PDFs, images and archives it builds a tool with `create_tool` (e.g. `pdftotext`, OCR) and runs it in the sandbox. If it cannot extract a file, it says so rather than guessing.
 
-## Tool garbage collection
+## .workers (standing helpers)
 
-Occasionally the agent reviews the tools **it built** and asks itself: *is this temporary? an old version? broken? still needed?* Doubtful tools go to a **reversible trash** — unsure → trash, never delete.
+A **.worker** is a standing, project-scoped agent the main agent spawns and consults — an ongoing-context specialist (an **expert**, **critic**, **personality**, or domain **owner**). Unlike a sub-agent (one-shot, fresh context), a .worker **keeps its context** between assignments and reports like a sub-agent.
+
+- **Spawned by the agent**: `spawn_worker({ name, type?, mission })` — the name is dot-prefixed and functional (`.doc_search`, `.red_team`, `.nvda_analyst`).
+- **Assign**: `assign_worker({ name, task })` — it runs in its own space (own browser tab), returns a **sub-agent-style report** (`report.md`/`report.json`), then waits.
+- **Manage**: `workers()` lists them; `retire_worker({ name })` archives one (reversible). The human view is **`/workers`** (and `/workers retire <name>`).
+- **Storage**: `<project>/.microdot/workers/.<name>/{context.json, mission.md, space/}` — hidden from `/project` (the dot prefix).
+- **Project-scoped**: shares the project's tools / skills / worker-types; its own files live in its `space/`.
+- **When to use one**: recurring work, or when remembered context or a distinct voice/perspective helps — otherwise use a one-off **sub-agent**. The default is ephemeral; the agent is told this in its system prompt.
+- Cap: `MICRODOT_MAX_WORKERS` (default 12). Full design in [`persistent-workers.md`](persistent-workers.md).
+
+## Tool garbage collectionOccasionally the agent reviews the tools **it built** and asks itself: *is this temporary? an old version? broken? still needed?* Doubtful tools go to a **reversible trash** — unsure → trash, never delete.
 
 - **`/gc`** — inventory the tools (`gc_scan`), have the model decide keep / park / **trash** with a one-line reason, then apply and reload the tool list. It also runs automatically at end of run when there are obvious candidates (probe/`tmp_`/`dbg_`/parked/`experiment`/`deprecated`), unless `MICRODOT_GC=false`.
 - **`/trash`** — list trashed tools; **`/trash restore <name>`** puts one back; **`/trash empty`** clears the trash. Nothing is auto-deleted.
@@ -241,6 +251,7 @@ Content is largely ported to the [deploy guide](../deploy/DEPLOY.md). In short:
 | `MICRODOT_DEBUG` | `false` | keep sub-agent spaces + verbose logs |
 | `MICRODOT_DEBUG_INPUT` | `false` | log each raw input chunk (terminal / key debugging) |
 | `MICRODOT_GC` | `true` | review/trash temporary tools at end of run when candidates exist |
+| `MICRODOT_MAX_WORKERS` | `12` | max standing `.workers` per project |
 | `PARALLEL_API_KEY` | — | optional Parallel search key (alias: `PARALLEL_KEY`) |
 | `MICRODOT_SEARCH_MAX` | `0` | cap `web_search` calls per session (0 = unlimited); guards Parallel cost |
 | `MICRODOT_SANDBOX_DIR` | - | explicit sandbox root override |

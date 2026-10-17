@@ -19,6 +19,7 @@
 - **Builds its own tools** - `create_tool` (sandboxed) + `list_tools` / `delete_tool` / `copy_tool`.
 - **Read-only file references** — hand it a path (or drop a file); it decides whether to inspect it, search it, or delegate analysis to a sub-agent. Non-text extraction (PDF, images) is done by agent-built tools.
 - **Keeps its own tools tidy** — `/gc` self-review with a reversible trash; throwaway tools are named `dbg_`/`tmp_`, parked with `_`, or versioned `_v2`.
+- **Stands up `.workers`** — project-scoped, dot-named helpers (`.doc_search`, `.red_team`) that keep context between tasks and report like sub-agents.
 - **Sandboxed, with no host fallback** — self-authored tools run only in an isolated Linux worker (WSL on Windows / native on Linux), jailed to their space; if the worker can't start, the tool is refused.
 - **Delegates to itself** — `spawn_subagent` / `spawn_subagents`: recursive, parallel, nested spaces, roll-up, hard caps.
 - **One process, one Chromium** — a tab per agent; started on demand and stopped when idle.
@@ -56,6 +57,7 @@ microdot.bat --resume <id>              # resume a saved chat
 | `/ref <path>`, `/refs`, `/unref` | add / list / remove read-only file references (or drop a file); refs are saved with the chat |
 | `/tools`, `/delete <n>` | list / delete custom tools — in the root, `/tools` lists every project's tools grouped by project |
 | `/gc`, `/trash` | review your tools (trash temporary/broken/old ones, reversible); list / restore / empty the trash |
+| `/workers` | list standing `.workers`; `/workers retire <name>` archives one |
 | `/skills` | list saved skills |
 | `/type [name]` | show or set this worker's type |
 | `/mission [text]` | show or set this space's `mission.md` (`/` resets to the root mission) |
