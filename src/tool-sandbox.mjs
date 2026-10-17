@@ -111,13 +111,24 @@ function maybeWarnInterop(interop) {
     '[sandbox] note: WSL interop is enabled — sandboxed tools can run Windows programs (cmd.exe/powershell.exe) on the host, which bypasses the read-only mount. The sandbox is NOT a security boundary. See docs/safety.md.\n',
   );
 }
-// Probe from the HOST (works even under bwrap, whose fresh /proc hides binfmt_misc).
+// Probe from the HOST by ACTUALLY trying to run a Windows binary: presence of the
+// `WSLInterop` binfmt entry is NOT a reliable signal (it stays listed even when
+// interop is disabled), so execute `cmd.exe` and see whether it succeeds.
 function warnIfWslInterop() {
   if (warnedInterop || !IS_WIN) return;
   try {
-    const r = spawnSync('wsl.exe', ['-d', distro(), '--exec', '/bin/sh', '-c', 'test -e /proc/sys/fs/binfmt_misc/WSLInterop'], {
-      stdio: 'ignore',
-    });
+    const r = spawnSync(
+      'wsl.exe',
+      [
+        '-d',
+        distro(),
+        '--exec',
+        '/bin/sh',
+        '-c',
+        'test -x /mnt/c/Windows/System32/cmd.exe && /mnt/c/Windows/System32/cmd.exe /c exit 0',
+      ],
+      { stdio: 'ignore' },
+    );
     if (r.status === 0) maybeWarnInterop(true);
   } catch {
     /* ignore */
@@ -230,7 +241,6 @@ function handleLine(line, onReady) {
     return;
   }
   if (msg.type === 'ready') {
-    maybeWarnInterop(msg.interop);
     onReady?.();
     return;
   }

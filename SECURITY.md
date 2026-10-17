@@ -21,7 +21,7 @@ prefer to stay anonymous.
   a Linux worker (WSL on Windows, native on Linux), optionally under `bubblewrap`.
   There is no in-process fallback: if the worker can't start, custom tools are
   refused. (Built-in tools run on the host.)
-- **The sandbox is not a security boundary on Windows.** `MICRODOT_SANDBOX_BWRAP=true` makes the worker's *view* read-only, but **WSL interop** lets sandboxed tools run Windows binaries (`cmd.exe`, `powershell.exe`) that execute on the host **as your user** — bypassing the read-only mount. Verified: `cmd.exe /c mkdir C:\…` succeeds from *inside* `bwrap`. For a real boundary, run the worker in a dedicated WSL distro with `[interop] enabled=false` and `[automount] enabled=false` (see `docs/safety.md`), or a container/VM. MicroDot prints a one-time warning when it detects interop.
+- **The sandbox is not a security boundary on Windows.** `MICRODOT_SANDBOX_BWRAP=true` makes the worker's *view* read-only, but **WSL interop** lets sandboxed tools run Windows binaries (`cmd.exe`, `powershell.exe`) that execute on the host **as your user** — bypassing the read-only mount. Verified: `cmd.exe /c mkdir C:\…` succeeds from *inside* `bwrap`. The fix is a dedicated WSL distro with `[interop] enabled=false` (keep automount — the agent's space lives on `/mnt/c`); set `MICRODOT_WSL_DISTRO` to it. See `docs/safety.md` for the exact steps. MicroDot warns (by actually running `cmd.exe`) when interop is reachable.
 - **Web content is untrusted input.** The agent browses and fetches pages; treat
   prompt-injection from fetched pages as a real risk. Don't give a Dot
   credentials or access it doesn't need.

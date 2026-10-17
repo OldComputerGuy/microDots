@@ -216,12 +216,4 @@ rl.on('line', (line) => {
   }
 });
 
-// Report whether Windows interop is reachable (WSL) — the host warns if so.
-function interopEnabled() {
-  try {
-    return fs.existsSync('/proc/sys/fs/binfmt_misc/WSLInterop');
-  } catch {
-    return false;
-  }
-}
-send({ type: 'ready', interop: interopEnabled() });
+send({ type: 'ready' });

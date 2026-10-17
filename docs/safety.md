@@ -29,24 +29,33 @@ not a guarantee — see *Guidance vs enforcement* below.
 Useful, but none of it bounds *what the browser and network can reach* or
 *whether a side-effecting action should happen at all*.
 
-## The sandbox is not a security boundary (WSL/Windows)
+## The sandbox escape and the real fix (WSL/Windows)
 
-`bubblewrap` (`MICRODOT_SANDBOX_BWRAP=true`) makes the worker's **view** read-only — but it does not cut **WSL interop**. A sandboxed tool can execute `/mnt/c/Windows/System32/cmd.exe` (or `powershell.exe`), and that runs on the **Windows host as you**, bypassing the read-only mount. Verified: `cmd.exe /c mkdir C:\…` succeeds from *inside* `bwrap`. MicroDot prints a one-time warning when it detects interop.
+`bubblewrap` (`MICRODOT_SANDBOX_BWRAP=true`) makes the worker's **view** read-only — but it does not cut **WSL interop**. A sandboxed tool can execute `/mnt/c/Windows/System32/cmd.exe` (or `powershell.exe`), and that runs on the **Windows host as you**, bypassing the read-only mount. Verified: `cmd.exe /c mkdir C:\…` succeeds from *inside* `bwrap`. MicroDot prints a one-time warning when it detects interop **by actually running `cmd.exe`** (the `WSLInterop` binfmt entry stays listed even when interop is disabled, so its presence is not a reliable signal).
 
-For a boundary that actually holds, run the worker in a **dedicated WSL distro** with interop and automount off:
+To close it, run the worker in a **dedicated WSL distro with interop disabled**:
+
+```powershell
+wsl --export Ubuntu-24.04 C:\temp\ubuntu.tar
+wsl --import Ubuntu-MicroDot %LOCALAPPDATA%\MicroDotWSL C:\temp\ubuntu.tar
+```
 
 ```ini
-# that distro's /etc/wsl.conf
+# Ubuntu-MicroDot:/etc/wsl.conf
 [boot]
 systemd=true
 [interop]
 enabled=false
 appendWindowsPath=false
-[automount]
-enabled=false
 ```
 
-Then `wsl --shutdown` and set `MICRODOT_WSL_DISTRO=<distro>`. There is now no `/mnt/c` and no Windows binaries, so the read-only mount is a real boundary. Read-only **references** still work — the CLI reads them **host-side**; the agent never reaches the host from the sandbox.
+```powershell
+wsl --shutdown
+# then in MicroDot's .env:
+#   MICRODOT_WSL_DISTRO=Ubuntu-MicroDot
+```
+
+Leave **automount on** — the agent's space lives on `/mnt/c` (a Windows folder), so disabling it would break the worker. With interop off, Windows binaries simply won't execute (`cmd.exe` exits non-zero), so the read-only mount becomes a real boundary for **writes and execution**. Read-only **references** still work: the CLI reads them **host-side**, so the agent never needs the host from the sandbox.
 
 Alternatives: a container/VM for the worker, or running MicroDot as an unprivileged user with no valuable host access (reduces blast radius only).
 
